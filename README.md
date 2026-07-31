@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # OASY — Merkeziyetsiz Çoklu İHA Zamanlanmış Varış Sistemi
 
 > **Durum: taslak.** Bu depo şu anda yalnızca proje iskeletini içerir. Dosyaların
@@ -42,3 +43,7 @@ Otopilot ↔ ROS 2 köprüsü olarak MAVROS değil, ArduPilot'un yerleşik **AP_
 
 Bu bölümler geliştirme ilerledikçe doldurulacaktır. Buraya yalnızca gerçek
 sistem üzerinde çalıştırılıp doğrulanmış komutlar yazılacaktır.
+=======
+# multi-uav-arrival-coordination
+ROS 2 Humble, ArduPlane SITL ve AP_DDS ile geliştirilen dağıtık çoklu sabit kanatlı İHA varış koordinasyonu.
+>>>>>>> b6574ae68860063b3a19f5715c6d05d60cbda0bc
