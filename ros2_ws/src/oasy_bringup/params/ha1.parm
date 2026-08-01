@@ -5,3 +5,7 @@
 DDS_ENABLE 1
 DDS_DOMAIN_ID 1
 DDS_UDP_PORT 2019
+# Varsayilan 10 deneme (~10 s) sonunda istemci kalici olarak vazgeciyor;
+# agent hazir olmadan acilirsa arac telemetrisi sessizce hic gelmiyor.
+# 0 = sinirsiz deneme, boylece baslatma sirasi onemsiz hale gelir.
+DDS_MAX_RETRY 0

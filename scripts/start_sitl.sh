@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Tek bir HA icin XRCE agent'i ve ArduPlane SITL'ini baslatir.
-# Kullanim: scripts/start_sitl.sh <1|2|3> [hiz_carpani]
+# Kullanim: scripts/start_sitl.sh <1|2|3> [hiz_carpani] [ek_parm_dosyasi]
 # Hiz carpani yalnizca gelistirme testlerini kisaltmak icindir; zamanlama
 # olcumleri 1.0 ile yapilmalidir.
+# Ek parm dosyasi ruzgar senaryolari icin kullanilir (params/wind/*.parm).
 set -euo pipefail
 
 VEHICLE="${1:-}"
 SPEEDUP="${2:-1}"
+EXTRA_PARM="${3:-}"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PARAM_DIR="${PROJECT_DIR}/ros2_ws/src/oasy_bringup/params"
 
@@ -26,6 +28,24 @@ if [[ ! -f "${PARAM_FILE}" ]]; then
   exit 1
 fi
 
+EFFECTIVE_PARM="${PARAM_FILE}"
+if [[ -n "${EXTRA_PARM}" ]]; then
+  # sim_vehicle.py binary'yi kendi calisma dizininden baslatiyor; goreli yol
+  # orada cozulmez.
+  EXTRA_PARM_ABS="$(readlink -f "${EXTRA_PARM}" 2>/dev/null || true)"
+  if [[ -z "${EXTRA_PARM_ABS}" || ! -f "${EXTRA_PARM_ABS}" ]]; then
+    echo "Ek parametre dosyasi bulunamadi: ${EXTRA_PARM}" >&2
+    exit 1
+  fi
+  # Iki dosya ayri ayri --add-param-file ile verildiginde arac parametreleri
+  # sessizce uygulanmiyor (DDS_DOMAIN_ID varsayilanda kaliyor ve arac yanlis
+  # domain'e baglaniyor). Tek dosyada birlestirmek bunu onluyor.
+  mkdir -p "${PROJECT_DIR}/logs"
+  EFFECTIVE_PARM="${PROJECT_DIR}/logs/effective_ha${VEHICLE}.parm"
+  cat "${PARAM_FILE}" "${EXTRA_PARM_ABS}" > "${EFFECTIVE_PARM}"
+  echo "[HA-${VEHICLE}] ek parametreler: ${EXTRA_PARM_ABS}"
+fi
+
 # Agent'i once baslatiyoruz; DDS istemcisi acilista agent'i bulamazsa
 # DDS_MAX_RETRY denemesinden sonra vazgeciyor.
 echo "[HA-${VEHICLE}] XRCE agent baslatiliyor (udp4 port ${UDP_PORT})"
@@ -38,6 +58,10 @@ sleep 2
 # -N: binary yeniden derlenmez.
 # --no-mavproxy: koordinasyon MAVProxy uzerinden yurumeyecek, SITL'e
 #   pymavlink ile dogrudan tcp:127.0.0.1:$((5760 + 10 * INSTANCE)) baglanilir.
+# --serial0=tcp:0: SERIAL0 varsayilani "tcp:5760:wait" oldugu icin SITL,
+#   bir GCS baglanana kadar accept() uzerinde bloklar ve ana dongu -
+#   dolayisiyla DDS thread'i - hic calismaz. MAVProxy kullanmadigimiz icin
+#   bekleme kaldirilir; "tcp:0" instance port ofsetini korur.
 echo "[HA-${VEHICLE}] SITL baslatiliyor (instance ${INSTANCE}, konum ${LOCATION}, hiz ${SPEEDUP}x)"
 exec sim_vehicle.py \
   -v ArduPlane \
@@ -49,4 +73,5 @@ exec sim_vehicle.py \
   --no-mavproxy \
   --enable-dds \
   -l "${LOCATION}" \
-  --add-param-file="${PARAM_FILE}"
+  --add-param-file="${EFFECTIVE_PARM}" \
+  -A "--serial0=tcp:0"

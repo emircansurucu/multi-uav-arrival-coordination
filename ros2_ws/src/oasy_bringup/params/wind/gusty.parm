@@ -1,0 +1,4 @@
+# Kuvvetli ve turbulansli ruzgar, guneybatidan.
+SIM_WIND_SPD 12
+SIM_WIND_DIR 225
+SIM_WIND_TURB 2

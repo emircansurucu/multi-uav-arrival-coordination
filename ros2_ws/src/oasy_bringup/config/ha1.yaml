@@ -1,0 +1,35 @@
+# HA-1 arac konfigurasyonu. Koordinatlar vaka dokumani Tablo 1'den alinmistir.
+vehicle_id: 1
+vehicle_domain_id: 1
+coordination_domain_id: 10
+mavlink_address: "tcp:127.0.0.1:5760"
+
+cruise_alt_msl_m: 400.0
+# Kalkis ogesi dogrudan 400 m'ye tirmanirsa arac pist civarinda uzun sure
+# kalir; tirmanisin geri kalani rota uzerinde surdurulur.
+takeoff_alt_msl_m: 100.0
+# Dokuman en fazla 400 m'ye izin veriyor; L1 takibi icin daha dar secildi.
+wp_accept_radius_m: 120.0
+# P2/P6.2 SITL olcumlerinde ruzgarsiz seyir hizi. Kalkis gecikmesi
+# hesabi bu degere dayanir; olcumle dogrulandiginda guncellenmelidir.
+nominal_cruise_speed_mps: 22.9
+# ArduPlane SITL modelinde AIRSPEED_MIN=10, AIRSPEED_MAX=30; komut
+# araligi bunlarin guvenli icinde tutulur.
+min_airspeed_mps: 15.0
+max_airspeed_mps: 28.0
+airspeed_rate_limit_mps2: 0.5
+timing_deadband_s: 0.5
+status_publish_hz: 5.0
+peer_stale_after_s: 2.0
+peer_lost_after_s: 5.0
+
+home: {lat: 47.530002, lon: -122.302457}
+
+# Son nokta tum araclarda ortak hedeftir.
+route:
+  - {lat: 47.556939, lon: -122.295004}
+  - {lat: 47.565332, lon: -122.265617}
+  - {lat: 47.571248, lon: -122.245860}
+  - {lat: 47.564550, lon: -122.230073}
+  - {lat: 47.543977, lon: -122.240829}
+  - {lat: 47.535683, lon: -122.228584}

@@ -1,0 +1,7 @@
+# Sabit orta siddetli ruzgar, kuzeyden.
+# Rotalar cogunlukla kuzey/kuzeydogu yonlu oldugu icin ilk bacaklarda
+# karsi ruzgar, donuslerden sonra yan ve arka ruzgar olusur.
+# SIM_WIND_DIR ruzgarin GELDIGI yondur.
+SIM_WIND_SPD 8
+SIM_WIND_DIR 0
+SIM_WIND_TURB 0

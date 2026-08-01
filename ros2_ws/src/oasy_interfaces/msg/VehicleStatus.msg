@@ -43,5 +43,10 @@ float32 eta_seconds
 uint64 planned_arrival_monotonic_ns
 bool arrival_committed
 
+# Azami hava hiziyla ulasilabilecek en erken varis ani. Ruzgar altinda
+# planlanan varis ulasilamaz hale gelebiliyor; ortak zamanlama capasi
+# butun araclarin bu degerinden turetilir.
+uint64 earliest_feasible_arrival_monotonic_ns
+
 bool target_reached
 uint64 actual_arrival_monotonic_ns

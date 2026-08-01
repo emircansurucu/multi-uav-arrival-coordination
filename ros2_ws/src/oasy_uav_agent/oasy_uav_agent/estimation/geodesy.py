@@ -37,6 +37,26 @@ def to_local_xy(point: LatLon, origin: LatLon) -> Tuple[float, float]:
     return east, north
 
 
+def cross_track_distance_m(position: LatLon, leg_start: LatLon, leg_end: LatLon) -> float:
+    """Konumun leg_start-leg_end dogru parcasina en kisa uzakligi.
+
+    Dokumandaki 500 m rota sapmasi siniri bu olcuye gore denetlenir.
+    Bacak uclarinin disinda kalindiginda uc noktaya olan mesafe kullanilir.
+    """
+    origin = leg_start
+    leg = to_local_xy(leg_end, origin)
+    point = to_local_xy(position, origin)
+
+    leg_squared = leg[0] ** 2 + leg[1] ** 2
+    if leg_squared == 0.0:
+        return math.hypot(*point)
+
+    fraction = (point[0] * leg[0] + point[1] * leg[1]) / leg_squared
+    fraction = max(0.0, min(1.0, fraction))
+    closest = (fraction * leg[0], fraction * leg[1])
+    return math.hypot(point[0] - closest[0], point[1] - closest[1])
+
+
 def circle_entry_fraction(
     start: Tuple[float, float],
     end: Tuple[float, float],
