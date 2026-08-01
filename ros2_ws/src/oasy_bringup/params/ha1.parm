@@ -1,0 +1,7 @@
+# HA-1 DDS ayarlari.
+# ArduPlane 4.6.3'te DDS topic isimleri ("rt/ap/...") derleme zamaninda sabittir
+# ve namespace desteklemez. Araclarin ayrismasi bu yuzden ROS domain'i ve
+# arac basina ayri XRCE agent portu ile saglanir.
+DDS_ENABLE 1
+DDS_DOMAIN_ID 1
+DDS_UDP_PORT 2019

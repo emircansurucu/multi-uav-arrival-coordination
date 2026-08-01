@@ -1,0 +1,4 @@
+# HA-2 DDS ayarlari. Gerekce icin ha1.parm'a bakiniz.
+DDS_ENABLE 1
+DDS_DOMAIN_ID 2
+DDS_UDP_PORT 2020
