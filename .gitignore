@@ -22,6 +22,8 @@ eeprom.bin
 terrain/
 logs/*
 !logs/.gitkeep
+# SITL surecleri calisma dizinine gore de log yaziyor
+ros2_ws/logs/
 
 # --- Teslim artefaktlari ---
 wheelhouse/*.whl

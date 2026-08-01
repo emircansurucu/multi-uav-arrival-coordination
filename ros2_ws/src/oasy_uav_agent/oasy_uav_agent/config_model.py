@@ -32,6 +32,7 @@ class VehicleConfig:
     max_airspeed_mps: float
     airspeed_rate_limit_mps2: float
     timing_deadband_s: float
+    s_maneuver_enabled: bool
     status_publish_hz: float
     peer_stale_after_s: float
     peer_lost_after_s: float
@@ -66,6 +67,7 @@ def load_vehicle_config(path: Path) -> VehicleConfig:
         max_airspeed_mps=float(raw["max_airspeed_mps"]),
         airspeed_rate_limit_mps2=float(raw["airspeed_rate_limit_mps2"]),
         timing_deadband_s=float(raw["timing_deadband_s"]),
+        s_maneuver_enabled=bool(raw["s_maneuver_enabled"]),
         status_publish_hz=float(raw["status_publish_hz"]),
         peer_stale_after_s=float(raw["peer_stale_after_s"]),
         peer_lost_after_s=float(raw["peer_lost_after_s"]),

@@ -5,7 +5,7 @@ import math
 import threading
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict
+from typing import Dict, Optional, Tuple
 
 from oasy_interfaces.msg import VehicleStatus
 
@@ -82,6 +82,20 @@ class PeerManager:
             if self.freshness(vehicle_id, now_monotonic_ns) is PeerFreshness.LOST:
                 continue
             result[vehicle_id] = record.status.earliest_feasible_arrival_monotonic_ns
+        return result
+
+    def latest_wind(self, now_monotonic_ns: int) -> Optional[Tuple[float, float]]:
+        """Kaybolmamis peer'lardan en tazesinin olctugu ruzgar (hiz, yon)."""
+        newest_ns = -1
+        result: Optional[Tuple[float, float]] = None
+        for vehicle_id, record in self.snapshot().items():
+            if not record.status.wind_valid:
+                continue
+            if self.freshness(vehicle_id, now_monotonic_ns) is PeerFreshness.LOST:
+                continue
+            if record.received_monotonic_ns > newest_ns:
+                newest_ns = record.received_monotonic_ns
+                result = (record.status.wind_speed, record.status.wind_dir_deg)
         return result
 
     def freshness(self, vehicle_id: int, now_monotonic_ns: int) -> PeerFreshness:

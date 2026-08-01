@@ -15,10 +15,14 @@ wp_accept_radius_m: 120.0
 nominal_cruise_speed_mps: 22.9
 # ArduPlane SITL modelinde AIRSPEED_MIN=10, AIRSPEED_MAX=30; komut
 # araligi bunlarin guvenli icinde tutulur.
-min_airspeed_mps: 15.0
+min_airspeed_mps: 13.0
 max_airspeed_mps: 28.0
 airspeed_rate_limit_mps2: 0.5
 timing_deadband_s: 0.5
+# KAPALI. Planlama gecerli (19 test) ama GUIDED yurutmesi iki denemede de
+# yorungeyi tamamlamadi; arac takilip zamanlamayi bozuyor. Kosula bagli
+# tetikleyici dogru (hem HA-1 hem HA-3 bu duruma dustu), sorun yurutmede.
+s_maneuver_enabled: false
 status_publish_hz: 5.0
 peer_stale_after_s: 2.0
 peer_lost_after_s: 5.0

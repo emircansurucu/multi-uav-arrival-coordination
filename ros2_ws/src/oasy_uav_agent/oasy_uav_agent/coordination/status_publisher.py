@@ -45,11 +45,16 @@ class StatusPublisher:
         msg.monotonic_ns = time.monotonic_ns()
         msg.target_reached = mission.target_reached
         msg.actual_arrival_monotonic_ns = mission.arrival_monotonic_ns
-        msg.planned_arrival_monotonic_ns = mission.planned_arrival_monotonic_ns
+        # Peer'lar taahhut edilmis plani referans alir; capa duzeltmesi
+        # yerel kalir, aksi halde araclar birbirinin kaymasini besler.
+        msg.planned_arrival_monotonic_ns = mission.committed_plan_monotonic_ns
         msg.arrival_committed = mission.arrival_committed
         msg.earliest_feasible_arrival_monotonic_ns = (
             mission.earliest_feasible_arrival_monotonic_ns
         )
+        msg.wind_valid = mission.wind_valid
+        msg.wind_speed = float(mission.wind_speed_mps)
+        msg.wind_dir_deg = float(mission.wind_from_direction_deg)
         # Varis teshis verileri (en yakin gecis, interpolasyon) bilerek
         # yayinlanmaz; peer kararlarinda kullanilmiyorlar. Rapor icin
         # MissionEvent uzerinden tasinacaklar.

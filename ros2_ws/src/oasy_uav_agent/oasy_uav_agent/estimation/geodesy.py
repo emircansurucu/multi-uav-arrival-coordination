@@ -37,6 +37,14 @@ def to_local_xy(point: LatLon, origin: LatLon) -> Tuple[float, float]:
     return east, north
 
 
+def from_local_xy(east_m: float, north_m: float, origin: LatLon) -> LatLon:
+    """to_local_xy'nin tersi: origin merkezli metre ofsetinden koordinat."""
+    lat_rad = math.radians(origin.lat)
+    latitude = origin.lat + math.degrees(north_m / _EARTH_RADIUS_M)
+    longitude = origin.lon + math.degrees(east_m / (_EARTH_RADIUS_M * math.cos(lat_rad)))
+    return LatLon(latitude, longitude)
+
+
 def cross_track_distance_m(position: LatLon, leg_start: LatLon, leg_end: LatLon) -> float:
     """Konumun leg_start-leg_end dogru parcasina en kisa uzakligi.
 

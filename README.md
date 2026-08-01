@@ -1,12 +1,15 @@
-<<<<<<< HEAD
-# OASY — Merkeziyetsiz Çoklu İHA Zamanlanmış Varış Sistemi
+# multi-uav-arrival-coordination
 
-> **Durum: taslak.** Bu depo şu anda yalnızca proje iskeletini içerir. Dosyaların
-> içerikleri geliştirme aşamalarında doldurulacaktır.
+ROS 2 Humble, ArduPlane SITL ve AP_DDS ile geliştirilen dağıtık çoklu sabit
+kanatlı İHA varış koordinasyonu.
+
+> **Durum: geliştirme aşamasında.** Rüzgârsız ortamda üç araç, HA-1 → HA-2 →
+> HA-3 sırasıyla ve aralarında ±1 saniye toleransla 20 saniye farkla hedefe
+> varıyor. Rüzgâr senaryoları ve teslim çıktıları henüz tamamlanmadı.
 
 Üç sabit kanatlı İHA'nın (ArduPlane 4.6.3 SITL) farklı kalkış noktalarından
 otonom kalkarak ortak bir hedefe **HA-1 → HA-2 → HA-3** sırasıyla ve aralarında
-**20 saniye** fark olacak şekilde varmasını sağlayan merkeziyetsiz ROS 2 sistemi.
+**20 saniye** fark olacak şekilde varmasını sağlayan merkeziyetsiz sistem.
 
 Merkezi bir yer kontrol istasyonu veya master node kullanılmaz; her araç kendi
 kararını diğer araçların yayınlarını dinleyerek bağımsız olarak verir.
@@ -29,21 +32,25 @@ Otopilot ↔ ROS 2 köprüsü olarak MAVROS değil, ArduPilot'un yerleşik **AP_
 
 | Yol | İçerik |
 |---|---|
-| `ros2_ws/src/oasy_interfaces/` | Özel ROS 2 mesajları (`VehicleStatus`, `ControlDecision`, `MissionEvent`) |
+| `ros2_ws/src/oasy_interfaces/` | Özel ROS 2 mesajları (`VehicleStatus`, `MissionEvent`) |
 | `ros2_ws/src/oasy_uav_agent/` | Araç başına çalışan bağımsız karar node'u ve alt modülleri |
 | `ros2_ws/src/oasy_bringup/` | Launch dosyaları, YAML konfigürasyonları, ArduPlane parametre dosyaları |
-| `missions/` | Araç başına rota dosyaları (QGC WPL) |
 | `scripts/` | SITL başlatma, tek tık başlatıcı, görev sonu analiz aracı |
 | `tests/` | Birim, entegrasyon ve senaryo testleri |
 | `docs/` | Teknik rapor, akış şemaları, algoritma açıklamaları, test sonuçları |
 | `logs/` | Koşu bazlı loglar ve metrikler (versiyonlanmaz) |
 | `wheelhouse/` | Teslim için `.whl` paketleri (versiyonlanmaz) |
 
+## Mesaj paketini derleme
+
+```bash
+cd ros2_ws
+colcon build --packages-select oasy_interfaces
+source install/setup.bash
+ros2 interface show oasy_interfaces/msg/VehicleStatus
+```
+
 ## Kurulum, çalıştırma ve testler
 
 Bu bölümler geliştirme ilerledikçe doldurulacaktır. Buraya yalnızca gerçek
 sistem üzerinde çalıştırılıp doğrulanmış komutlar yazılacaktır.
-=======
-# multi-uav-arrival-coordination
-ROS 2 Humble, ArduPlane SITL ve AP_DDS ile geliştirilen dağıtık çoklu sabit kanatlı İHA varış koordinasyonu.
->>>>>>> b6574ae68860063b3a19f5715c6d05d60cbda0bc

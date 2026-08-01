@@ -48,5 +48,12 @@ bool arrival_committed
 # butun araclarin bu degerinden turetilir.
 uint64 earliest_feasible_arrival_monotonic_ns
 
+# Havadaki aracin olctugu ruzgar. Yerdeki araclar kendi nominal ucus
+# surelerini buna gore duzeltip kalkis slotlarini hesaplar; ruzgarsiz
+# tahminle kurulan plan ruzgar altinda ulasilamaz oluyor.
+bool wind_valid
+float32 wind_speed
+float32 wind_dir_deg
+
 bool target_reached
 uint64 actual_arrival_monotonic_ns

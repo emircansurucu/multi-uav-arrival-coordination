@@ -41,6 +41,7 @@ def make_config(vehicle_id: int = 1) -> VehicleConfig:
         max_airspeed_mps=28.0,
         airspeed_rate_limit_mps2=0.5,
         timing_deadband_s=0.5,
+        s_maneuver_enabled=True,
         status_publish_hz=5.0,
         peer_stale_after_s=2.0,
         peer_lost_after_s=5.0,
@@ -53,11 +54,19 @@ class FakeSnapshot:
         self.altitude_msl_m = altitude_msl_m
         self.updated_monotonic_ns = monotonic_ns
         self.velocity_east_mps, self.velocity_north_mps = velocity
+        # Burun kuzeyde, hava hizi yer hizina esit -> ruzgarsiz.
+        self.airspeed_forward_mps = math.hypot(*velocity)
+        self.airspeed_left_mps = 0.0
+        self.yaw_rad = math.pi / 2
         self._age_s = age_s
 
     @property
     def valid(self):
         return self.position is not None
+
+    @property
+    def airspeed_mps(self):
+        return math.hypot(self.airspeed_forward_mps, self.airspeed_left_mps)
 
     def age_s(self, _now_ns):
         return self._age_s if self.valid else math.inf
@@ -438,3 +447,434 @@ def test_ulasilamayan_peer_plani_ileri_kaydirir():
     assert plan > nominal
     beklenen = yavas_peer[2] - 20 * SECOND_NS
     assert plan == pytest.approx(beklenen, abs=SECOND_NS)
+
+
+class FakeGuided:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, position, altitude_msl_m):
+        self.sent.append((position, altitude_msl_m))
+
+
+def terminal_manager(early_s: float):
+    """Terminal fazda, verilen kadar erken ve minimum hizda bir arac kurar."""
+    import time as _time
+
+    telemetry = FakeTelemetry()
+    commander = FakeCommander()
+    guided = FakeGuided()
+    manager = MissionManager(
+        make_config(1), commander, telemetry,
+        peer_commitments=lambda _ns: {}, peer_feasible_arrivals=lambda _ns: {},
+        guided_commander=guided,
+    )
+    reach_cruise(manager, telemetry)
+    # Aktif waypoint'in son bacaga gelmesi icin rotayi sirayla gec; aksi
+    # halde rota sapmasi yanlis bacaga gore olculur.
+    for index, waypoint in enumerate(ROUTE[:-1]):
+        telemetry.set(waypoint, 400.0, (10 + index) * SECOND_NS)
+        manager.step()
+
+    # Son bacak uzerinde, hedefe ~890 m kala bir nokta (rota sapmasi sifir).
+    onceki = ROUTE[-2]
+    oran = 0.68
+    yakin = LatLon(
+        TARGET.lat + oran * (onceki.lat - TARGET.lat),
+        TARGET.lon + oran * (onceki.lon - TARGET.lon),
+    )
+    telemetry.set(yakin, 400.0, 20 * SECOND_NS)
+    manager.step()
+    assert manager.state == MissionState.TERMINAL
+
+    # Hiz yetkisi tukenmis: minimum hava hizinda ve erken.
+    # Nominal plan da guncellenmeli, aksi halde capa mantigi plani geri yazar.
+    manager._controller._commanded_mps = 15.0
+    plan_ns = _time.monotonic_ns() + int((manager._eta_s + early_s) * SECOND_NS)
+    manager._planned_arrival_ns = plan_ns
+    manager._nominal_plan_ns = plan_ns
+    return manager, commander, telemetry, guided
+
+
+def test_hiz_yetkisi_varken_manevra_planlanmaz():
+    manager, commander, _, guided = terminal_manager(early_s=30.0)
+    # Kontrolcu minimumda degil: hala yavaslayabilir.
+    manager._controller._commanded_mps = 22.0
+    manager.step()
+    assert "GUIDED" not in commander.modes
+    assert guided.sent == []
+
+
+def drive_trigger(manager, ticks=45):
+    """Tetikleyici gurultuye basmasin diye ardisik dogrulama istiyor."""
+    for _ in range(ticks):
+        manager.step()
+
+
+def test_yetki_tukendiginde_s_manevrasi_baslar():
+    manager, commander, telemetry, guided = terminal_manager(early_s=30.0)
+    drive_trigger(manager)
+    assert "GUIDED" in commander.modes
+    # Manevra bir adimda planlanir, sonraki adimda komut edilmeye baslar.
+    manager.step()
+    assert guided.sent, "GUIDED konum hedefi gonderilmedi"
+
+
+def test_manevra_hedefi_guided_ile_komut_etmez():
+    """ArduPlane GUIDED hedefte cember atar; 5 m'ye girilemez."""
+    manager, _, telemetry, guided = terminal_manager(early_s=30.0)
+    drive_trigger(manager)
+    for position, _alt in guided.sent:
+        assert geodesic_distance_m(position, TARGET) > 1.0
+
+
+def test_manevra_bir_kez_denenir():
+    manager, commander, telemetry, _ = terminal_manager(early_s=30.0)
+    drive_trigger(manager)
+    guided_sayisi = commander.modes.count("GUIDED")
+    for _ in range(5):
+        manager.step()
+    assert commander.modes.count("GUIDED") == guided_sayisi
+
+
+def test_manevra_bitince_auto_ya_donulur():
+    manager, commander, telemetry, guided = terminal_manager(early_s=30.0)
+    drive_trigger(manager)
+    assert manager._maneuver_path
+
+    # Her ara noktaya ulasilmis gibi ilerlet.
+    for step, waypoint in enumerate(list(manager._maneuver_path)):
+        telemetry.set(waypoint, 400.0, (30 + step) * SECOND_NS)
+        manager.step()
+
+    assert manager._maneuver_path == ()
+    assert commander.modes[-1] == "AUTO"
+
+
+def test_s_manevrasi_kapaliyken_tetiklenmez():
+    """Konfigurasyon kapaliysa yetki tukense bile GUIDED'a gecilmez."""
+    import time as _time
+    from dataclasses import replace
+
+    telemetry = FakeTelemetry()
+    commander = FakeCommander()
+    guided = FakeGuided()
+    kapali = replace(make_config(1), s_maneuver_enabled=False)
+    manager = MissionManager(
+        kapali, commander, telemetry,
+        peer_commitments=lambda _ns: {}, peer_feasible_arrivals=lambda _ns: {},
+        guided_commander=guided,
+    )
+    reach_cruise(manager, telemetry)
+    for index, waypoint in enumerate(ROUTE[:-1]):
+        telemetry.set(waypoint, 400.0, (10 + index) * SECOND_NS)
+        manager.step()
+
+    onceki = ROUTE[-2]
+    yakin = LatLon(
+        TARGET.lat + 0.68 * (onceki.lat - TARGET.lat),
+        TARGET.lon + 0.68 * (onceki.lon - TARGET.lon),
+    )
+    telemetry.set(yakin, 400.0, 20 * SECOND_NS)
+    manager.step()
+
+    manager._controller._commanded_mps = 15.0
+    plan_ns = _time.monotonic_ns() + int((manager._eta_s + 30.0) * SECOND_NS)
+    manager._planned_arrival_ns = plan_ns
+    manager._nominal_plan_ns = plan_ns
+
+    for _ in range(45):
+        manager.step()
+    assert "GUIDED" not in commander.modes
+    assert guided.sent == []
+
+
+def test_yerdeki_arac_peer_ruzgarina_gore_sureyi_duzeltir():
+    """Ilk kalkan arac ruzgar sondasi; yerdekiler slotunu buna gore kurar."""
+    telemetry = FakeTelemetry()
+    commander = FakeCommander()
+    manager = MissionManager(
+        make_config(2), commander, telemetry,
+        peer_commitments=lambda _ns: {},
+        peer_wind=lambda _ns: (8.0, 0.0),  # 8 m/s, kuzeyden
+    )
+    ruzgarsiz_s = manager.nominal_flight_s
+
+    telemetry.set(HOME, 0.0, SECOND_NS)
+    advance_to(manager, telemetry, MissionState.WAIT_PEERS)
+    manager.step()
+
+    assert manager.nominal_flight_s > ruzgarsiz_s
+
+
+def test_ruzgar_yoksa_nominal_sure_degismez():
+    manager, _, telemetry = make_manager(vehicle_id=2)
+    ruzgarsiz_s = manager.nominal_flight_s
+    telemetry.set(HOME, 0.0, SECOND_NS)
+    advance_to(manager, telemetry, MissionState.WAIT_PEERS)
+    manager.step()
+    assert manager.nominal_flight_s == ruzgarsiz_s
+
+
+def test_havadaki_arac_ruzgari_yayinlar():
+    """Yer hizi ile hava hizi farki ruzgar olarak raporlanmali."""
+    manager, _, telemetry = make_manager(vehicle_id=1)
+    reach_cruise(manager, telemetry)
+    assert manager.snapshot().wind_valid is False or manager.snapshot().wind_speed_mps < 0.1
+
+    # Kuzeye 15 m/s ilerliyor ama burnu kuzeyde 23 m/s hava hizinda:
+    # 8 m/s karsi ruzgar var.
+    telemetry.set(HOME, 400.0, 30 * SECOND_NS, velocity=(0.0, 15.0))
+    telemetry.current.airspeed_forward_mps = 23.0
+    manager.step()
+
+    durum = manager.snapshot()
+    assert durum.wind_valid is True
+    assert durum.wind_speed_mps == pytest.approx(8.0, abs=0.5)
+    assert durum.wind_from_direction_deg == pytest.approx(0.0, abs=5.0)
+
+
+def test_yerde_beklerken_ruzgar_gelince_slot_guncellenir():
+    """Taahhut ani ruzgar olculmeden once oldugu icin slot sonradan guncellenmeli."""
+    import time as _time
+
+    ruzgar = {"deger": None}
+    telemetry = FakeTelemetry()
+    commander = FakeCommander()
+    uzak_varis = _time.monotonic_ns() + 3600 * SECOND_NS
+    manager = MissionManager(
+        make_config(2), commander, telemetry,
+        peer_commitments=lambda _ns: {1: uzak_varis},
+        peer_wind=lambda _ns: ruzgar["deger"],
+    )
+    telemetry.set(HOME, 0.0, SECOND_NS)
+    advance_to(manager, telemetry, MissionState.WAIT_TAKEOFF_SLOT)
+
+    ruzgarsiz_s = manager.nominal_flight_s
+    manager.step()
+    assert manager.nominal_flight_s == ruzgarsiz_s
+
+    # Oncu havalanip ruzgari olctu.
+    ruzgar["deger"] = (8.0, 0.0)
+    manager.step()
+    assert manager.nominal_flight_s > ruzgarsiz_s
+    assert manager.state == MissionState.WAIT_TAKEOFF_SLOT
+
+
+def test_ruzgar_tirmanista_da_olculur():
+    """Tirmanis 200 s surebiliyor; ruzgar seyri beklemeden yayinlanmali."""
+    manager, _, telemetry = make_manager(vehicle_id=1)
+    telemetry.set(HOME, 0.0, SECOND_NS)
+    advance_to(manager, telemetry, MissionState.TAKEOFF)
+
+    telemetry.set(HOME, 150.0, 5 * SECOND_NS, velocity=(0.0, 15.0))
+    telemetry.current.airspeed_forward_mps = 23.0
+    manager.step()
+
+    assert manager.state in (MissionState.TAKEOFF, MissionState.CLIMB)
+    assert manager.snapshot().wind_valid is True
+    assert manager.snapshot().wind_speed_mps == pytest.approx(8.0, abs=0.5)
+
+
+def test_yerde_ruzgar_kestirimi_yapilmaz():
+    """Kalkis kosusundaki dusuk hava hizi anlamli ruzgar vermez."""
+    manager, _, telemetry = make_manager(vehicle_id=1)
+    telemetry.set(HOME, 0.0, SECOND_NS, velocity=(0.0, 2.0))
+    telemetry.current.airspeed_forward_mps = 3.0
+    for _ in range(6):
+        manager.step()
+    assert manager.snapshot().wind_valid is False
+
+
+def test_alcak_irtifada_ruzgar_kestirimi_yapilmaz():
+    """Ruzgar yere dogru azaldigi icin alcak ornekler seyri temsil etmez."""
+    manager, _, telemetry = make_manager(vehicle_id=1)
+    telemetry.set(HOME, 0.0, SECOND_NS)
+    advance_to(manager, telemetry, MissionState.TAKEOFF)
+
+    # 30 m: kalkis irtifasinin (100 m) altinda.
+    telemetry.set(HOME, 30.0, 5 * SECOND_NS, velocity=(0.0, 15.0))
+    telemetry.current.airspeed_forward_mps = 23.0
+    manager.step()
+    assert manager.snapshot().wind_valid is False
+
+    # 120 m: esigin uzerinde.
+    telemetry.set(HOME, 120.0, 6 * SECOND_NS, velocity=(0.0, 15.0))
+    telemetry.current.airspeed_forward_mps = 23.0
+    manager.step()
+    assert manager.snapshot().wind_valid is True
+
+
+def test_oncu_ruzgar_ogrenince_plani_ileri_ceker():
+    """Kalkista ruzgarsiz taahhut veren oncu, ruzgari ogrenince plani uzatmali."""
+    manager, _, telemetry = make_manager(vehicle_id=1)
+    telemetry.set(HOME, 0.0, SECOND_NS)
+    advance_to(manager, telemetry, MissionState.TAKEOFF)
+    ruzgarsiz_plan = manager.snapshot().planned_arrival_monotonic_ns
+
+    # 8 m/s karsi ruzgarda, esigin uzerinde irtifada seyre gec.
+    telemetry.set(HOME, 400.0, 10 * SECOND_NS, velocity=(0.0, 15.0))
+    telemetry.current.airspeed_forward_mps = 23.0
+    advance_to(manager, telemetry, MissionState.CRUISE)
+    for _ in range(3):
+        manager.step()
+
+    assert manager.snapshot().planned_arrival_monotonic_ns > ruzgarsiz_plan
+
+
+def test_plan_asla_one_alinmaz():
+    """Ratchet: ruzgar zayiflasa bile plan geriye cekilmemeli."""
+    ruzgar = {"deger": (8.0, 0.0)}
+    telemetry = FakeTelemetry()
+    commander = FakeCommander()
+    manager = MissionManager(
+        make_config(1), commander, telemetry,
+        peer_commitments=lambda _ns: {},
+        peer_wind=lambda _ns: ruzgar["deger"],
+    )
+    telemetry.set(HOME, 0.0, SECOND_NS)
+    advance_to(manager, telemetry, MissionState.TAKEOFF)
+    telemetry.set(HOME, 400.0, 10 * SECOND_NS, velocity=(0.0, 20.0))
+    telemetry.current.airspeed_forward_mps = 20.0
+    advance_to(manager, telemetry, MissionState.CRUISE)
+    for _ in range(3):
+        manager.step()
+    ruzgarli_plan = manager.snapshot().planned_arrival_monotonic_ns
+
+    ruzgar["deger"] = (0.0, 0.0)
+    for _ in range(5):
+        manager.step()
+    assert manager.snapshot().planned_arrival_monotonic_ns >= ruzgarli_plan
+
+
+def test_takipci_oncunun_revizyonunu_yerde_izler():
+    """Oncu tirmanista plani ileri cekince, yerdeki takipci de izlemeli."""
+    import time as _time
+
+    ha1_plan = {"deger": _time.monotonic_ns() + 600 * SECOND_NS}
+    telemetry = FakeTelemetry()
+    commander = FakeCommander()
+    manager = MissionManager(
+        make_config(2), commander, telemetry,
+        peer_commitments=lambda _ns: {1: ha1_plan["deger"]},
+    )
+    telemetry.set(HOME, 0.0, SECOND_NS)
+    advance_to(manager, telemetry, MissionState.WAIT_TAKEOFF_SLOT)
+    ilk_plan = manager.snapshot().planned_arrival_monotonic_ns
+
+    # Oncu ruzgari ogrenip planini 60 s ileri cekti.
+    ha1_plan["deger"] += 60 * SECOND_NS
+    for _ in range(3):
+        manager.step()
+
+    yeni_plan = manager.snapshot().planned_arrival_monotonic_ns
+    assert yeni_plan > ilk_plan
+    assert yeni_plan - ilk_plan == pytest.approx(60 * SECOND_NS, rel=0.05)
+    assert manager.state == MissionState.WAIT_TAKEOFF_SLOT
+
+
+def test_oncu_plani_yalnizca_bir_kez_revize_eder():
+    """Gurultulu ruzgar olcumu plani tekrar tekrar ileri itmemeli."""
+    ruzgar = {"deger": (6.0, 0.0)}
+    telemetry = FakeTelemetry()
+    commander = FakeCommander()
+    manager = MissionManager(
+        make_config(1), commander, telemetry,
+        peer_commitments=lambda _ns: {},
+        peer_wind=lambda _ns: ruzgar["deger"],
+    )
+    telemetry.set(HOME, 0.0, SECOND_NS)
+    advance_to(manager, telemetry, MissionState.TAKEOFF)
+    telemetry.set(HOME, 400.0, 10 * SECOND_NS, velocity=(0.0, 15.0))
+    telemetry.current.airspeed_forward_mps = 23.0
+    for _ in range(3):
+        manager.step()
+    # Capa planned_arrival'i ayrica oynatabilir; revizyonun dokundugu deger
+    # nominal plandir.
+    revize_sonrasi = manager._nominal_plan_ns
+    assert manager._plan_revised is True
+
+    # Olcum artsa bile nominal plan bir daha degismemeli.
+    for hiz in (7.0, 8.0, 9.0, 10.0):
+        ruzgar["deger"] = (hiz, 0.0)
+        for _ in range(3):
+            manager.step()
+    assert manager._nominal_plan_ns == revize_sonrasi
+
+
+def test_yayinlanan_plan_capa_kaymasini_tasimaz():
+    """Peer'lara taahhut edilmis plan gider; capa duzeltmesi yerel kalir.
+
+    Capa kaymasi taahhut uzerinden tasinirsa araclar birbirinin kaymasini
+    besleyip plani sonsuza kadar ileri itiyor.
+    """
+    import time as _time
+
+    telemetry = FakeTelemetry()
+    commander = FakeCommander()
+    yavas_peer = _time.monotonic_ns() + 2000 * SECOND_NS
+    manager = MissionManager(
+        make_config(1), commander, telemetry,
+        peer_commitments=lambda _ns: {},
+        peer_feasible_arrivals=lambda _ns: {2: yavas_peer},
+    )
+    reach_cruise(manager, telemetry)
+    telemetry.set(HOME, 400.0, 30 * SECOND_NS)
+    manager.step()
+
+    durum = manager.snapshot()
+    # Capa calisma planini ileri itmis olmali...
+    assert durum.planned_arrival_monotonic_ns > durum.committed_plan_monotonic_ns
+    # ...ama yayinlanan taahhut degismemis olmali.
+    assert durum.committed_plan_monotonic_ns == manager._nominal_plan_ns
+
+
+def test_manevra_sirasinda_ulasilabilirlik_dondurulur():
+    """Manevra ilerlemeyi dusurur; ulasilabilirlik bundan etkilenmemeli.
+
+    Aksi halde capa geriye kayar, daha fazla yedirme gerekir ve manevra
+    kendini besler.
+    """
+    manager, _, telemetry, _ = terminal_manager(early_s=30.0)
+    drive_trigger(manager)
+    assert manager._maneuver_path, "manevra baslamadi"
+
+    dondurulan = manager.snapshot().earliest_feasible_arrival_monotonic_ns
+    # Ilerleme cokse bile ulasilabilirlik degismemeli.
+    manager._progress_speed_mps = 1.0
+    for _ in range(5):
+        manager.step()
+    assert manager.snapshot().earliest_feasible_arrival_monotonic_ns == dondurulan
+
+
+def test_anlik_eta_sicramasi_manevra_tetiklemez():
+    """Donuslerde -274 s gibi gecici degerler goruldu; tek ornek yetmemeli.
+
+    Kosul dogrulama suresi dolmadan ortadan kalkarsa sayac sifirlanmali.
+    """
+    manager, commander, telemetry, guided = terminal_manager(early_s=300.0)
+
+    # Dogrulama esiginin altinda kalacak kadar adim: henuz tetiklenmemeli.
+    for _ in range(20):
+        manager.step()
+    assert "GUIDED" not in commander.modes
+    assert manager._trigger_streak > 0
+
+    # Sicrama gecti: arac artik minimum hizda degil, kosul bozuldu.
+    manager._controller._commanded_mps = 22.0
+    manager.step()
+    assert manager._trigger_streak == 0, "sayac sifirlanmadi"
+
+    for _ in range(20):
+        manager.step()
+    assert "GUIDED" not in commander.modes, "gecici sicrama manevra tetikledi"
+
+
+def test_manevra_plan_sinirlari_ucus_marji_birakir():
+    """Ucusta pursuit tasmasi oluyor; plan siniri 500 m'den dar olmali."""
+    from oasy_uav_agent.control.maneuver_planner import MAX_LATERAL_OFFSET_M
+    from oasy_uav_agent.mission_manager import MANEUVER_PLAN_LATERAL_LIMIT_M
+
+    assert MANEUVER_PLAN_LATERAL_LIMIT_M < MAX_LATERAL_OFFSET_M
+    # Olculen tasma orani ~1.6; plan siniri bunu 500 m altinda tutmali.
+    assert MANEUVER_PLAN_LATERAL_LIMIT_M * 1.6 <= MAX_LATERAL_OFFSET_M

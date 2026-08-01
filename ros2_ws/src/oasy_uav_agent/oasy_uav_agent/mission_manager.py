@@ -15,7 +15,7 @@ import threading
 import time
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Tuple
 
 from .autopilot_adapter.mission_builder import build_mission
 from .config_model import VehicleConfig
@@ -27,8 +27,15 @@ from .coordination.arrival_schedule import (
     target_arrival,
 )
 from .control.arrival_controller import ArrivalController
+from .control.maneuver_planner import follow_path, plan_s_maneuver, turn_radius_m
 from .estimation.arrival_detector import ArrivalDetector
 from .estimation.eta_estimator import EtaEstimator, route_length_m
+from .estimation.wind_estimator import (
+    WindEstimate,
+    estimate_wind,
+    route_duration_with_wind_s,
+    wind_from_speed_direction,
+)
 from .estimation.geodesy import LatLon, cross_track_distance_m, geodesic_distance_m
 
 logger = logging.getLogger(__name__)
@@ -51,6 +58,27 @@ FEASIBILITY_FILTER_TAU_S = 30.0
 MIN_FEASIBLE_PROGRESS_MPS = 5.0
 # Capa bu esikten az kaydiginda log uretilmez.
 ANCHOR_LOG_THRESHOLD_S = 1.0
+# S-manevrasi yalnizca hiz yetkisi tukendiginde devreye girer: arac
+# minimum hava hizinda oldugu halde hala bu kadar erken variyorsa.
+S_MANEUVER_TRIGGER_S = 3.0
+# Tetikleyici anlik ETA sicramalarina basmamali: donuslerde ilerleme hizi
+# dustugu icin -274 s gibi gecici degerler goruldu ve bunlar geri donulemez
+# bir manevra planlatiyordu. Kosul bu kadar ardisik adim surmelidir.
+S_MANEUVER_CONFIRM_TICKS = 40
+# Planlanan yanal ofset ile ucular sapma ayni degil: pursuit gudumu zikzak
+# koselerinde tasiyor (olculen 497 m plan -> 816 m ucus). Dokumandaki 500 m
+# sinirinin ucusta da tutmasi icin plan bu daha dar sinirla yapilir.
+MANEUVER_PLAN_LATERAL_LIMIT_M = 280.0
+MANEUVER_BANK_ANGLE_DEG = 30.0
+# Takip noktasi mesafesi. SITL plane modelinde WP_LOITER_RAD 80 m; takip
+# noktasi bunun belirgin uzerinde tutulmazsa arac hedefi yakalayip cember
+# atmaya basliyor ve manevra hic ilerlemiyor.
+MANEUVER_LOOKAHEAD_M = 250.0
+# Yorungenin sonuna bu kadar kalinca AUTO gorevine geri donulur.
+MANEUVER_HANDOVER_M = 300.0
+# Ruzgar kestiriminin gecerli sayilmasi icin gereken en dusuk hava hizi;
+# yerde ve kalkis kosusunda olculen degerler anlamsizdir.
+MIN_WIND_ESTIMATE_AIRSPEED_MPS = 10.0
 
 
 class MissionState(IntEnum):
@@ -72,6 +100,15 @@ class MissionState(IntEnum):
     FAILSAFE = 13
 
 
+# Ruzgar kestiriminin yapildigi durumlar. Tirmanis 200 saniyeyi bulabiliyor;
+# ruzgar yalnizca seyirde olculseydi, yerde bekleyen araclar kalkis
+# slotlarini duzeltemeden havalaniyordu.
+AIRBORNE_STATES = frozenset({
+    MissionState.TAKEOFF, MissionState.CLIMB,
+    MissionState.CRUISE, MissionState.TERMINAL,
+})
+
+
 @dataclass(frozen=True)
 class MissionSnapshot:
     """Durum makinesinin diger thread'lerden okunabilen anlik gorunumu."""
@@ -82,6 +119,11 @@ class MissionSnapshot:
     arrival_min_distance_m: float
     arrival_interpolated: bool
     planned_arrival_monotonic_ns: int
+    # Peer'lara yayinlanan deger budur: capa duzeltmesi iceren
+    # calisma plani degil, taahhut edilmis nominal plan. Capa
+    # zaten herkesin ayni veriden bagimsiz hesapladigi ortak bir
+    # kaydirmadir; taahhut uzerinden tasinirsa geri beslenir.
+    committed_plan_monotonic_ns: int
     arrival_committed: bool
     earliest_feasible_arrival_monotonic_ns: int
     max_route_deviation_m: float
@@ -89,6 +131,9 @@ class MissionSnapshot:
     remaining_distance_m: float
     active_wp_index: int
     commanded_airspeed_mps: float
+    wind_valid: bool
+    wind_speed_mps: float
+    wind_from_direction_deg: float
 
 
 class MissionManager:
@@ -101,7 +146,11 @@ class MissionManager:
         telemetry,
         peer_commitments: Optional[Callable[[int], Dict[int, int]]] = None,
         peer_feasible_arrivals: Optional[Callable[[int], Dict[int, int]]] = None,
+        guided_commander=None,
+        peer_wind: Optional[Callable[[int], Optional[Tuple[float, float]]]] = None,
     ) -> None:
+        self._guided = guided_commander
+        self._peer_wind = peer_wind or (lambda _now_ns: None)
         self._config = config
         self._commander = commander
         self._telemetry = telemetry
@@ -140,6 +189,18 @@ class MissionManager:
         self._nominal_plan_ns = 0
         self._filtered_progress_mps: Optional[float] = None
         self._feasibility_filter_ns = 0
+        self._maneuver_path: Tuple[LatLon, ...] = ()
+        self._maneuver_index = 0
+        self._maneuver_attempted = False
+        self._trigger_streak = 0
+        self._wind: Optional[WindEstimate] = None
+        # Gercek kalkis ani; ruzgar sonradan ogrenilince plan
+        # bu ana gore yeniden hesaplanir.
+        self._takeoff_actual_ns = 0
+        # Oncu planini yalnizca bir kez revize eder. Her tick'te
+        # yeniden hesaplanirsa gurultulu ruzgar olcumu tek yonde
+        # birikip plani sonsuza kadar ileri itiyor.
+        self._plan_revised = False
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -162,6 +223,7 @@ class MissionManager:
                 arrival_min_distance_m=self._detector.min_distance_m,
                 arrival_interpolated=self._detector.interpolated,
                 planned_arrival_monotonic_ns=self._planned_arrival_ns,
+                committed_plan_monotonic_ns=self._nominal_plan_ns,
                 arrival_committed=self._arrival_committed,
                 earliest_feasible_arrival_monotonic_ns=self._feasible_arrival_ns,
                 max_route_deviation_m=self._max_route_deviation_m,
@@ -169,6 +231,11 @@ class MissionManager:
                 remaining_distance_m=self._remaining_distance_m,
                 active_wp_index=self._active_wp_index,
                 commanded_airspeed_mps=self._controller.commanded_airspeed_mps,
+                wind_valid=self._wind is not None,
+                wind_speed_mps=self._wind.speed_mps if self._wind else 0.0,
+                wind_from_direction_deg=(
+                    self._wind.from_direction_deg if self._wind else 0.0
+                ),
             )
 
     def start(self) -> None:
@@ -203,6 +270,13 @@ class MissionManager:
 
     def step(self) -> None:
         """Tek bir durum makinesi adimi. Testlerden dogrudan cagrilabilir."""
+        if self.state in AIRBORNE_STATES:
+            self._update_wind(self._telemetry.snapshot())
+        if self._arrival_committed:
+            # Yerde de calismali: oncu tirmanista ruzgari ogrenip planini
+            # ileri cekince, henuz kalkmamis takipciler bunu izleyip kendi
+            # slotlarini guncelleyebilmeli.
+            self._revise_plan(time.monotonic_ns())
         handler = _HANDLERS.get(self.state)
         if handler is not None:
             handler(self)
@@ -232,9 +306,42 @@ class MissionManager:
         if self._commander.upload_mission(mission):
             self._transition(MissionState.WAIT_PEERS)
 
+    def _known_wind(self, now_ns: int) -> Optional[WindEstimate]:
+        """Kendi olcumu varsa onu, yoksa havadaki bir peer'inkini kullanir."""
+        if self._wind is not None:
+            return self._wind
+        wind_pair = self._peer_wind(now_ns)
+        return wind_from_speed_direction(*wind_pair) if wind_pair else None
+
+    def _refresh_nominal_flight_time(self, now_ns: int) -> None:
+        """Nominal ucus suresini bilinen ruzgara gore duzeltir.
+
+        Ruzgarsiz hesaplanan sure, ruzgar altinda ulasilamaz bir plan
+        uretir; plan yanlis kurulunca hata havadayken duzeltilemeyecek kadar
+        gec fark ediliyor. Ilk kalkan arac ruzgar sondasi gorevi gorur.
+        """
+        wind = self._known_wind(now_ns)
+        if wind is None:
+            return
+        wind_pair = (wind.speed_mps, wind.from_direction_deg)
+        corrected_s = route_duration_with_wind_s(
+            self._config.home, self._config.route,
+            self._config.nominal_cruise_speed_mps, wind,
+        )
+        if math.isclose(corrected_s, self._nominal_flight_s, rel_tol=0.01):
+            return
+
+        logger.info(
+            "nominal ucus suresi ruzgara gore duzeltildi: %.0f s -> %.0f s "
+            "(peer olcumu %.1f m/s, %.0f dereceden)",
+            self._nominal_flight_s, corrected_s, wind_pair[0], wind_pair[1],
+        )
+        self._nominal_flight_s = corrected_s
+
     def _on_wait_peers(self) -> None:
         """Referans varis anini belirler ve kendi planini taahhut eder."""
         now_ns = time.monotonic_ns()
+        self._refresh_nominal_flight_time(now_ns)
         reference = compute_reference_arrival(
             self._config.vehicle_id, self._peer_commitments(now_ns)
         )
@@ -286,17 +393,49 @@ class MissionManager:
             )
 
     def _on_wait_takeoff_slot(self) -> None:
+        # Yerde beklerken ruzgar olcumu gelebilir; slot ona gore guncellenir.
+        # Taahhut ani cok erken oldugu icin (oncu daha havalanmadan) duzeltme
+        # yalnizca WAIT_PEERS'te yapilsaydi hicbir zaman uygulanmazdi.
+        self._resync_takeoff_slot(time.monotonic_ns())
         if time.monotonic_ns() >= self._takeoff_time_ns:
             self._transition(MissionState.ARMING)
+
+    def _resync_takeoff_slot(self, now_ns: int) -> None:
+        """Kalkis anini guncel plan ve ruzgar duzeltmesine gore yeniden kurar.
+
+        Hem nominal sure hem de plan yerde beklerken degisebiliyor; slot her
+        adimda ikisinden yeniden turetilir.
+        """
+        previous_s = self._nominal_flight_s
+        self._refresh_nominal_flight_time(now_ns)
+
+        with self._lock:
+            new_takeoff_ns = compute_takeoff_time(
+                self._planned_arrival_ns, self._nominal_flight_s
+            )
+            changed_s = abs(new_takeoff_ns - self._takeoff_time_ns) / 1e9
+            self._takeoff_time_ns = new_takeoff_ns
+            delay_s = (new_takeoff_ns - now_ns) / 1e9
+
+        if changed_s >= ANCHOR_LOG_THRESHOLD_S or not math.isclose(
+            previous_s, self._nominal_flight_s, rel_tol=1e-9
+        ):
+            logger.info(
+                "kalkis slotu guncellendi | nominal ucus %.0f s | yerde kalan bekleme %.1f s",
+                self._nominal_flight_s, max(delay_s, 0.0),
+            )
 
     def _on_arming(self) -> None:
         if not self._commander.set_mode("AUTO"):
             return
         if not self._commander.arm():
             return
+        takeoff_ns = time.monotonic_ns()
+        with self._lock:
+            self._takeoff_actual_ns = takeoff_ns
         if not self._arrival_committed:
             self._commit(
-                time.monotonic_ns() + int(self._nominal_flight_s * NANOSECONDS_PER_SECOND),
+                takeoff_ns + int(self._nominal_flight_s * NANOSECONDS_PER_SECOND),
                 "kalkis ani",
             )
         self._transition(MissionState.TAKEOFF)
@@ -318,8 +457,115 @@ class MissionManager:
             self._transition(MissionState.TERMINAL)
 
     def _on_terminal(self) -> None:
-        if self._track_arrival() is not None:
-            self._coordinate_and_regulate()
+        position = self._track_arrival()
+        if position is None:
+            return
+        self._coordinate_and_regulate()
+
+        if self._maneuver_path:
+            self._fly_maneuver(position)
+        else:
+            self._consider_s_maneuver(position)
+
+    def _consider_s_maneuver(self, position: LatLon) -> None:
+        """Hiz yetkisi tukendiyse yorunge uzatma manevrasi planlar.
+
+        Dokuman hedefin 2 km cevresinde loiter'i yasakladigi icin terminal
+        fazda tek secenek S-manevrasidir.
+        """
+        if not self._config.s_maneuver_enabled:
+            return
+        if self._maneuver_attempted or self._guided is None:
+            return
+
+        early_s = self._timing_error_s()
+        at_min_airspeed = math.isclose(
+            self._controller.commanded_airspeed_mps, self._config.min_airspeed_mps, abs_tol=0.2
+        )
+        if early_s > -S_MANEUVER_TRIGGER_S or not at_min_airspeed:
+            self._trigger_streak = 0
+            return
+
+        self._trigger_streak += 1
+        if self._trigger_streak < S_MANEUVER_CONFIRM_TICKS:
+            return
+
+        self._maneuver_attempted = True
+        extra_distance_m = -early_s * max(self._progress_speed_mps, 1.0)
+        maneuver = plan_s_maneuver(
+            position,
+            self._config.target,
+            extra_distance_m,
+            turn_radius_m(self._config.min_airspeed_mps, MANEUVER_BANK_ANGLE_DEG),
+            max_lateral_offset_m=MANEUVER_PLAN_LATERAL_LIMIT_M,
+        )
+        if maneuver is None:
+            logger.warning(
+                "S-manevrasi uretilemedi: %.0f m ek mesafe 500 m sapma ve donus "
+                "yaricapi kisitlari altinda saglanamiyor", extra_distance_m,
+            )
+            return
+
+        if not self._commander.set_mode("GUIDED"):
+            logger.error("GUIDED moduna gecilemedi, manevra iptal")
+            return
+
+        # Yorunge, planlama anindaki konumdan baslar ve hedefte biter.
+        # Hedefin kendisi hicbir zaman komut edilmez; son yaklasma AUTO'ya
+        # devredilir, aksi halde arac hedefin etrafinda cember atar.
+        with self._lock:
+            self._maneuver_path = (position, *maneuver.waypoints)
+            self._maneuver_index = 0
+
+        logger.info(
+            "S-MANEVRASI BASLADI | %.0f m ek mesafe | %d dongu | "
+            "yanal sapma %.0f m (sinir 500 m) | %.1f s erken",
+            extra_distance_m, maneuver.cycles, maneuver.lateral_offset_m, -early_s,
+        )
+
+    def _fly_maneuver(self, position: LatLon) -> None:
+        """Aracin onunde kayan takip noktasini komut eder.
+
+        Ulasilabilir bir nokta komut edilmez; ArduPlane GUIDED'da hedefe
+        varan arac WP_LOITER_RAD yaricapiyla cember atmaya baslar.
+        """
+        state = follow_path(
+            self._maneuver_path, position, MANEUVER_LOOKAHEAD_M, self._maneuver_index
+        )
+        if state is None:
+            self._abort_maneuver("takip noktasi hesaplanamadi")
+            return
+
+        with self._lock:
+            self._maneuver_index = state.segment_index
+
+        if state.remaining_to_end_m <= MANEUVER_HANDOVER_M:
+            self._finish_maneuver()
+            return
+
+        self._guided.send(state.carrot, self._config.cruise_alt_msl_m)
+
+    def _abort_maneuver(self, reason: str) -> None:
+        logger.error("S-manevrasi iptal edildi: %s", reason)
+        with self._lock:
+            self._maneuver_path = ()
+        self._finish_maneuver()
+
+    def _finish_maneuver(self) -> None:
+        """Manevra bitince gorevi devralmasi icin AUTO'ya donulur."""
+        with self._lock:
+            self._maneuver_path = ()
+        if self._commander.set_mode("AUTO"):
+            logger.info("S-MANEVRASI BITTI | son yaklasma AUTO gorevine birakildi")
+        else:
+            logger.error("AUTO moduna donulemedi, arac GUIDED'da kaldi")
+
+    def _timing_error_s(self) -> float:
+        """Pozitif deger gec kalindigini gosterir."""
+        if self._planned_arrival_ns <= 0:
+            return 0.0
+        remaining_s = (self._planned_arrival_ns - time.monotonic_ns()) / 1e9
+        return self._eta_s - remaining_s
 
     def _coordinate_and_regulate(self) -> None:
         """Ulasilabilirligi yayina hazirlar, capayi uygular, hizi duzenler."""
@@ -327,6 +573,53 @@ class MissionManager:
         self._update_feasible_arrival(now_ns)
         self._apply_feasible_anchor(now_ns)
         self._regulate_speed()
+
+    def _revise_plan(self, now_ns: int) -> None:
+        """Ruzgar ogrenilince plani ileri ceker; asla one almaz.
+
+        Oncu arac kalkis aninda taahhut verirken ruzgari bilmiyor. Ruzgarsiz
+        nominal sure fazla iyimser oldugu icin butun takvim sikisiyor ve
+        takipciler ulasamiyor. Oncu kendi planini duzeltince takipciler de
+        yeni taahhudu izleyerek kendilerininkini ileri ceker.
+
+        Kaydirma tek yonlu: geriye alinsaydi doygun bir araca imkansiz bir
+        hedef verilebilirdi.
+        """
+        if self._nominal_plan_ns <= 0:
+            return
+
+        if self._is_leader():
+            if self._takeoff_actual_ns <= 0 or self._plan_revised:
+                return
+            if self._wind is None:
+                return
+            self._refresh_nominal_flight_time(now_ns)
+            revised_ns = self._takeoff_actual_ns + int(
+                self._nominal_flight_s * NANOSECONDS_PER_SECOND
+            )
+            self._plan_revised = True
+            reason = "ruzgar duzeltmesi (tek seferlik)"
+        else:
+            reference = compute_reference_arrival(
+                self._config.vehicle_id, self._peer_commitments(now_ns)
+            )
+            if not reference.resolved:
+                return
+            revised_ns = reference.monotonic_ns
+            reason = f"peer {reference.source_vehicle_ids} taahhudu guncellendi"
+
+        self._revise_plan_later(revised_ns, reason)
+
+    def _revise_plan_later(self, revised_ns: int, reason: str) -> None:
+        with self._lock:
+            if revised_ns <= self._nominal_plan_ns:
+                return
+            shift_s = (revised_ns - self._nominal_plan_ns) / 1e9
+            self._nominal_plan_ns = revised_ns
+            self._planned_arrival_ns = max(self._planned_arrival_ns, revised_ns)
+
+        if shift_s >= ANCHOR_LOG_THRESHOLD_S:
+            logger.info("varis plani %.1f s ileri cekildi (%s)", shift_s, reason)
 
     def _update_feasible_arrival(self, now_ns: int) -> None:
         """Azami hava hiziyla ulasilabilecek en erken varis anini gunceller.
@@ -338,6 +631,14 @@ class MissionManager:
         Ilerleme, donus ve gecici bozulmalara tepki vermemesi icin ayrica
         yavas bir filtreden gecirilir.
         """
+        # Manevra sirasinda arac bilerek yoldan sapiyor; rota dogrultusundaki
+        # ilerlemesi duser ama YAPABILECEGI degismez. Olculen degeri kullanmak
+        # ulasilabilirligi cokertip capayi geriye itiyor, bu da daha fazla
+        # manevra gerektiriyordu: pozitif geri besleme. Manevra boyunca son
+        # temiz tahmin dondurulur.
+        if self._maneuver_path:
+            return
+
         max_airspeed = self._config.max_airspeed_mps
         commanded = self._controller.commanded_airspeed_mps
 
@@ -432,6 +733,26 @@ class MissionManager:
             self._transition(MissionState.DONE)
 
     # --- yardimcilar ---
+
+    def _update_wind(self, snapshot) -> None:
+        """Havadayken ruzgari kestirir; yerdeki peer'lar bunu kullanir."""
+        # Ruzgar yer yuzeyine dogru azalir (SITL'de karekok yasasi, tam
+        # siddete SIM_WIND_T_ALT=60 m'de ulasilir). Alcakta olculen deger
+        # dogrudur ama seyir irtifasindaki ruzgari temsil etmez; kalkis
+        # irtifasinin altindaki ornekler kullanilmaz.
+        if not snapshot.valid or snapshot.airspeed_mps < MIN_WIND_ESTIMATE_AIRSPEED_MPS:
+            return
+        if snapshot.altitude_msl_m < self._config.takeoff_alt_msl_m:
+            return
+        wind = estimate_wind(
+            (snapshot.velocity_east_mps, snapshot.velocity_north_mps),
+            (snapshot.airspeed_forward_mps, snapshot.airspeed_left_mps),
+            snapshot.yaw_rad,
+        )
+        if wind is None:
+            return
+        with self._lock:
+            self._wind = wind
 
     def _track_route_deviation(self, position: LatLon, active_index: int) -> None:
         """Aktif bacaga olan dik uzakligi izler ve 500 m sinirini denetler."""

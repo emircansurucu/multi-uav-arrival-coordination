@@ -21,6 +21,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from rclpy.signals import SignalHandlerOptions
 
+from .autopilot_adapter.dds_commands import GuidedPositionCommander
 from .autopilot_adapter.dds_telemetry import DdsTelemetry
 from .autopilot_adapter.mavlink_link import MavlinkCommander
 from .config_model import VehicleConfig, load_vehicle_config
@@ -44,6 +45,7 @@ class VehicleSide:
     def __init__(self, context: rclpy.Context, config: VehicleConfig) -> None:
         self.node = rclpy.create_node(f"ha{config.vehicle_id}_vehicle", context=context)
         self.telemetry = DdsTelemetry(self.node)
+        self.guided = GuidedPositionCommander(self.node)
 
 
 class CoordinationSide:
@@ -211,6 +213,8 @@ def main() -> int:
         vehicle.telemetry,
         coordination.peers.committed_arrivals,
         coordination.peers.feasible_arrivals,
+        vehicle.guided,
+        coordination.peers.latest_wind,
     )
     coordination.node.create_timer(
         1.0 / config.status_publish_hz,
