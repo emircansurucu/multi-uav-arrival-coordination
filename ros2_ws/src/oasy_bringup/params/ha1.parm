@@ -30,6 +30,9 @@ ARSPD_USE 1
 # yani varsayimin iki katindan fazla; EKF tasarim geregi geride kaliyor.
 # Olculen gecikme ~120 s ve profil 180 s'de bir degistigi icin kestirim
 # surekli bir basamak geride kaliyordu.
-# 0.5 degeri gercek degisim hizinin ustunde secildi (parametre araligi
-# 0.01-2.0); daha yuksek degerler kestirimi gereksiz gurultulu yapar.
-EK3_WIND_P_NSE 0.5
+# 0.5 ile orta ucusta kestirim mukemmel oldu (8.5 m/s 202d vs gercek
+# 9 m/s 200d) ama son profil basamagini yakalayamadi: basamak ile HA-3'un
+# varisi arasinda ~40 s var ve o sirada gercek 10 m/s 340d iken kestirim
+# 5.2 m/s 52d idi. Bu, son 10 saniyede yer hizini 11'den 29 m/s'ye cikaran
+# arkadan ruzgari gorunmez kildi. 1.0 ile takip iki kat hizlanir.
+EK3_WIND_P_NSE 1.0

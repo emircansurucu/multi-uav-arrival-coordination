@@ -69,6 +69,10 @@ LOITER_CONFIRM_TICKS = 40
 # HA-2 "kalan erkenlik 1.0 s" ile cikip 74 saniyede 32 saniye erkenlesti
 # ve 2500 m esigini gectigi icin bir daha daire cizemedi.
 LOITER_RECOVERY_MARGIN_S = 3.0
+# Tetiklemede asgari hava hizi kullanilir. Ustune yedek birakmak (terminal
+# fazda iki yonlu trim icin) denendi ve geri alindi: erken oldugunu bilmeyen
+# araca (HA-3) yardim etmedi, bilen araci (HA-2) gereksiz geciktirip varis
+# sirasini bozdu (olculen: sira YANLIS, +7.92 / -21.98).
 # Capa bu esikten az kaydiginda log uretilmez.
 ANCHOR_LOG_THRESHOLD_S = 1.0
 # S-manevrasi yalnizca hiz yetkisi tukendiginde devreye girer: arac
@@ -92,12 +96,6 @@ MANEUVER_HANDOVER_M = 300.0
 # Ruzgar kestiriminin gecerli sayilmasi icin gereken en dusuk hava hizi;
 # yerde ve kalkis kosusunda olculen degerler anlamsizdir.
 MIN_WIND_ESTIMATE_AIRSPEED_MPS = 10.0
-# Son yaklasmada seyir hizi asilmaz. Azami hizda L1 kontrolcusunun donus
-# yaricapi buyuyor, waypoint kesilemiyor ve hem 5 m kabul yaricapi hem 500 m
-# rota sapmasi kaciriliyor: degisken ruzgar kosusunda HA-3 son bacagi
-# 27.9 m/s ile ucup hedefe 16 m yaklasabildi ve 501 m sapti. Bu mesafede
-# kalan zamanlama yetkisi zaten birkac saniye; seyir hizina inmek ucuz.
-FINAL_APPROACH_DISTANCE_M = 600.0
 # Konum, yer hizi ve hava hizi 33 ms'de bir yayinlanir; bu esigi asan
 # yayilim, konulardan birinin durdugu (AP_DDS yayini tikandigi) anlamina
 # gelir ve o ornekten cikarilan ruzgar gercek degildir.
@@ -886,13 +884,9 @@ class MissionManager:
         dt_s = (now_ns - self._last_control_ns) / 1e9 if self._last_control_ns else TICK_INTERVAL_S
         self._last_control_ns = now_ns
 
-        final_approach = self._remaining_distance_m <= FINAL_APPROACH_DISTANCE_M
         command = self._controller.update(
             self._eta_s, self._remaining_distance_m,
             self._planned_arrival_ns, now_ns, dt_s,
-            max_airspeed_override=(
-                self._config.nominal_cruise_speed_mps if final_approach else None
-            ),
         )
         if command is None or not command.changed:
             return

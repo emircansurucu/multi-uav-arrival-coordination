@@ -1148,3 +1148,4 @@ def test_loiter_sirasinda_ulasilabilirlik_dondurulur():
         manager.step()
 
     assert manager.snapshot().earliest_feasible_arrival_monotonic_ns == dondurulan
+
