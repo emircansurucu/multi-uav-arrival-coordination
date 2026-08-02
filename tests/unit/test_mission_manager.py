@@ -555,8 +555,11 @@ class FakeGuided:
         self.sent.append((position, altitude_msl_m))
 
 
-def terminal_manager(early_s: float):
-    """Terminal fazda, verilen kadar erken ve minimum hizda bir arac kurar."""
+def terminal_manager(early_s: float, oran: float = 0.68):
+    """Terminal fazda, verilen kadar erken ve minimum hizda bir arac kurar.
+
+    oran son bacak uzerindeki konumu belirler; buyudukce hedefe yaklasilir.
+    """
     import time as _time
 
     telemetry = FakeTelemetry()
@@ -574,9 +577,8 @@ def terminal_manager(early_s: float):
         telemetry.set(waypoint, 400.0, (10 + index) * SECOND_NS)
         manager.step()
 
-    # Son bacak uzerinde, hedefe ~890 m kala bir nokta (rota sapmasi sifir).
+    # Son bacak uzerinde bir nokta (rota sapmasi sifir).
     onceki = ROUTE[-2]
-    oran = 0.68
     yakin = LatLon(
         TARGET.lat + oran * (onceki.lat - TARGET.lat),
         TARGET.lon + oran * (onceki.lon - TARGET.lon),
@@ -1149,3 +1151,41 @@ def test_loiter_sirasinda_ulasilabilirlik_dondurulur():
 
     assert manager.snapshot().earliest_feasible_arrival_monotonic_ns == dondurulan
 
+
+
+def test_manevra_kalan_rota_poligonunu_izler():
+    """S, konumdan hedefe duz cizgi degil, kalan rotayi izlemeli.
+
+    Duz cizgi aradaki waypoint'leri atliyordu ve sapma manevradan degil
+    rotanin kesilmesinden geliyordu (olculen 91 m plan -> 812 m ucus).
+    """
+    from oasy_uav_agent.control.maneuver_planner import distance_to_polyline_m
+
+    manager, commander, telemetry, guided = terminal_manager(early_s=30.0)
+    drive_trigger(manager)
+    assert "GUIDED" in commander.modes
+    assert manager._maneuver_path
+
+    # Yorunge, aktif waypoint'ten itibaren kalan rotaya yakin kalmali.
+    kalan_rota = (telemetry.current.position, *ROUTE[manager._active_wp_index:])
+    en_buyuk = max(
+        distance_to_polyline_m(nokta, kalan_rota) for nokta in manager._maneuver_path
+    )
+    assert en_buyuk <= 500.0, f"planlanan sapma {en_buyuk:.0f} m"
+
+
+def test_kisa_mesafede_manevra_denenmez():
+    """Kalan rota kisa ise manevra zarar verir; hic denenmemeli.
+
+    Olculen: hedefe 212 m kala 170 m ek mesafe istendi, 159 m yanal ofsetle
+    arac hedefi 66 m ile isakaladi (kabul yaricapi 5 m).
+    """
+    # Hedefe ~200 m kala: manevra icin gereken 800 m'nin cok altinda.
+    manager, commander, _, guided = terminal_manager(early_s=30.0, oran=0.15)
+    assert manager._remaining_distance_m < 800.0
+
+    drive_trigger(manager)
+
+    assert "GUIDED" not in commander.modes
+    assert guided.sent == []
+    assert manager._maneuver_path == ()

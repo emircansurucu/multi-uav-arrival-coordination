@@ -46,12 +46,20 @@ class PathFollowState:
 
 @dataclass(frozen=True)
 class SManeuver:
-    """Uretilmis S-manevrasi ve gerceklesmesi beklenen kazanc."""
+    """Uretilmis S-manevrasi ve olculmus geometrisi.
+
+    planned_extra_distance_m ve max_route_deviation_m istenen degerler degil,
+    uretilen yorungenin uzerinde HESAPLANMIS degerlerdir. Onceki surumde
+    istenen yanal ofset raporlaniyordu ve ucusta olculen sapma 9 kat cikmisti:
+    manevra duz cizgi olarak planlanip rotayi kesiyordu, yani plan ile olcum
+    ayni referansi kullanmiyordu.
+    """
 
     waypoints: Tuple[LatLon, ...]
     lateral_offset_m: float
     cycles: int
     planned_extra_distance_m: float
+    max_route_deviation_m: float
 
 
 def loiter_allowed(position: LatLon, target: LatLon) -> bool:
@@ -73,45 +81,128 @@ def turn_radius_m(airspeed_mps: float, bank_angle_deg: float) -> float:
     return airspeed_mps ** 2 / (9.81 * math.tan(math.radians(bank_angle_deg)))
 
 
+def polyline_length_m(points: Sequence[LatLon]) -> float:
+    """Poligonun toplam uzunlugu."""
+    return sum(
+        geodesic_distance_m(start, end) for start, end in zip(points, points[1:])
+    )
+
+
+def distance_to_polyline_m(point: LatLon, polyline: Sequence[LatLon]) -> float:
+    """Noktanin poligona en kisa uzakligi.
+
+    Rota sapmasi bu olcuye gore tanimlanir: orijinal gorev rotasini olusturan
+    sonlu segmentler kumesine minimum yatay uzaklik. Tek bir aktif bacaga gore
+    olcmek, arac o bacagin disinda oldugunda boyuna mesafeyi de sapmaya
+    katiyor ve degeri sisiriyor.
+    """
+    if len(polyline) < 2:
+        return geodesic_distance_m(point, polyline[0]) if polyline else 0.0
+    return min(
+        _project_onto_segment(point, start, end)[1]
+        for start, end in zip(polyline, polyline[1:])
+    )
+
+
+def _point_and_heading_at_arc(
+    polyline: Sequence[LatLon], arc_m: float
+) -> Tuple[LatLon, Tuple[float, float]]:
+    """Poligon uzerinde verilen yay uzunlugundaki nokta ve yerel dogrultu."""
+    kalan_m = arc_m
+    for start, end in zip(polyline, polyline[1:]):
+        length_m = geodesic_distance_m(start, end)
+        if length_m <= 0.0:
+            continue
+        if kalan_m <= length_m:
+            east_m, north_m = to_local_xy(end, start)
+            unit = (east_m / length_m, north_m / length_m)
+            return _interpolate(start, end, kalan_m / length_m), unit
+        kalan_m -= length_m
+    son_start, son_end = polyline[-2], polyline[-1]
+    length_m = max(geodesic_distance_m(son_start, son_end), 1e-6)
+    east_m, north_m = to_local_xy(son_end, son_start)
+    return son_end, (east_m / length_m, north_m / length_m)
+
+
+def _build_polyline_waypoints(
+    polyline: Sequence[LatLon], cycles: int, offset_m: float
+) -> Tuple[LatLon, ...]:
+    """Poligonu izleyen, donusumlu yanal ofsetli yorunge uretir.
+
+    Orijinal rota noktalari korunur ve ofset noktalari yay uzunluguna gore
+    aralarina yerlestirilir. Boylece arac rotayi kesmez; onceki surum
+    konumdan hedefe duz cizgi cizip aradaki waypoint'leri atliyordu.
+    """
+    total_m = polyline_length_m(polyline)
+    # (yay konumu, nokta) ciftleri; orijinal noktalar ve disler birlikte siralanir.
+    dugumler: list = []
+    yay_m = 0.0
+    for index, nokta in enumerate(polyline):
+        if index > 0:
+            yay_m += geodesic_distance_m(polyline[index - 1], nokta)
+        dugumler.append((yay_m, nokta))
+
+    for index in range(cycles):
+        dis_yay_m = (index + 0.5) / cycles * total_m
+        nokta, along = _point_and_heading_at_arc(polyline, dis_yay_m)
+        yon = 1.0 if index % 2 == 0 else -1.0
+        # Dogrultunun soluna dik birim vektor.
+        lateral = (-along[1], along[0])
+        dugumler.append((
+            dis_yay_m,
+            from_local_xy(lateral[0] * offset_m * yon, lateral[1] * offset_m * yon, nokta),
+        ))
+
+    dugumler.sort(key=lambda ikili: ikili[0])
+    return tuple(nokta for _, nokta in dugumler)
+
+
 def plan_s_maneuver(
-    start: LatLon,
-    end: LatLon,
+    route: Sequence[LatLon],
     extra_distance_m: float,
     min_turn_radius_m: float,
     max_lateral_offset_m: float = MAX_LATERAL_OFFSET_M,
     max_cycles: int = DEFAULT_MAX_CYCLES,
 ) -> Optional[SManeuver]:
-    """start-end bacagini uzatan S-manevrasi uretir.
+    """Kalan rota poligonunu uzatan S-manevrasi uretir.
 
-    Yanal sapmayi en aza indiren dongu sayisi secilir; donus yaricapinin
-    izin verdiginden daha siki zikzak uretilmez. Kisitlar altinda hicbir
-    cozum yoksa None doner ve cagiran taraf eksigi bilir.
+    route[0] aracin mevcut konumu, route[-1] hedeftir; aradakiler henuz
+    gecilmemis rota noktalaridir. Manevra bu poligonu izler, kesmez.
+
+    Uretilen her aday icin gercek yol uzunlugu ve poligona gercek sapma
+    hesaplanir; sapma sinirini asan adaylar elenir. Kisitlar altinda hicbir
+    cozum yoksa None doner ve cagiran taraf manevradan vazgecer.
     """
-    leg_length_m = geodesic_distance_m(start, end)
-    if leg_length_m <= 0.0 or extra_distance_m <= 0.0:
+    if len(route) < 2:
+        return None
+    total_m = polyline_length_m(route)
+    if total_m <= 0.0 or extra_distance_m <= 0.0:
         return None
 
     minimum_tooth_m = MIN_TOOTH_TO_DIAMETER_RATIO * 2.0 * min_turn_radius_m
-    best: Optional[Tuple[int, float]] = None
+    best: Optional[SManeuver] = None
     for cycles in range(1, max_cycles + 1):
-        if leg_length_m / cycles < minimum_tooth_m:
+        if total_m / cycles < minimum_tooth_m:
             break
-        offset_m = lateral_offset_for_extra(leg_length_m, extra_distance_m, cycles)
+        offset_m = lateral_offset_for_extra(total_m, extra_distance_m, cycles)
         if offset_m > max_lateral_offset_m:
             continue
-        if best is None or offset_m < best[1]:
-            best = (cycles, offset_m)
 
-    if best is None:
-        return None
+        waypoints = _build_polyline_waypoints(route, cycles, offset_m)
+        deviation_m = max(distance_to_polyline_m(nokta, route) for nokta in waypoints)
+        if deviation_m > max_lateral_offset_m:
+            continue
+        aday = SManeuver(
+            waypoints=waypoints,
+            lateral_offset_m=offset_m,
+            cycles=cycles,
+            planned_extra_distance_m=polyline_length_m(waypoints) - total_m,
+            max_route_deviation_m=deviation_m,
+        )
+        if best is None or aday.max_route_deviation_m < best.max_route_deviation_m:
+            best = aday
 
-    cycles, offset_m = best
-    return SManeuver(
-        waypoints=_build_waypoints(start, end, cycles, offset_m),
-        lateral_offset_m=offset_m,
-        cycles=cycles,
-        planned_extra_distance_m=extra_distance_m,
-    )
+    return best
 
 
 def follow_path(
@@ -189,23 +280,3 @@ def _interpolate(start: LatLon, end: LatLon, fraction: float) -> LatLon:
     return from_local_xy(segment[0] * fraction, segment[1] * fraction, start)
 
 
-def _build_waypoints(
-    start: LatLon, end: LatLon, cycles: int, offset_m: float
-) -> Tuple[LatLon, ...]:
-    """Bacak boyunca donusumlu yanal ofsetli ara noktalar uretir."""
-    leg_east_m, leg_north_m = to_local_xy(end, start)
-    leg_length_m = math.hypot(leg_east_m, leg_north_m)
-    along = (leg_east_m / leg_length_m, leg_north_m / leg_length_m)
-    # Bacak dogrultusunun soluna dik birim vektor.
-    lateral = (-along[1], along[0])
-
-    waypoints = []
-    for index in range(cycles):
-        fraction = (index + 0.5) / cycles
-        sign = 1.0 if index % 2 == 0 else -1.0
-        east_m = along[0] * leg_length_m * fraction + lateral[0] * offset_m * sign
-        north_m = along[1] * leg_length_m * fraction + lateral[1] * offset_m * sign
-        waypoints.append(from_local_xy(east_m, north_m, start))
-
-    waypoints.append(end)
-    return tuple(waypoints)

@@ -93,6 +93,12 @@ MANEUVER_BANK_ANGLE_DEG = 30.0
 MANEUVER_LOOKAHEAD_M = 250.0
 # Yorungenin sonuna bu kadar kalinca AUTO gorevine geri donulur.
 MANEUVER_HANDOVER_M = 300.0
+# Manevra icin kalan rotanin en az bu kadar olmasi gerekir. Kisa mesafede
+# istenen ek yol, bacak uzunlugunun yanina yaklasir ve zikzak son anda buyuk
+# bir savrulmaya donusur: olculen kosuda 212 m kala 170 m ek mesafe istendi,
+# 159 m yanal ofsetle arac hedefi 66 m ile isakaladi (sinir 5 m). Boyle bir
+# durumda manevra etmemek etmekten iyidir.
+MIN_MANEUVER_ROUTE_M = 800.0
 # Ruzgar kestiriminin gecerli sayilmasi icin gereken en dusuk hava hizi;
 # yerde ve kalkis kosusunda olculen degerler anlamsizdir.
 MIN_WIND_ESTIMATE_AIRSPEED_MPS = 10.0
@@ -645,11 +651,25 @@ class MissionManager:
         if self._trigger_streak < S_MANEUVER_CONFIRM_TICKS:
             return
 
+        if self._remaining_distance_m < MIN_MANEUVER_ROUTE_M:
+            # Tek sefer uyarilir; tekrar denemenin anlami yok.
+            self._maneuver_attempted = True
+            logger.warning(
+                "S-manevrasi atlandi: kalan rota %.0f m (en az %.0f m gerekli). "
+                "Erkenlik %.1f s bu mesafede kapatilamaz.",
+                self._remaining_distance_m, MIN_MANEUVER_ROUTE_M, -early_s,
+            )
+            return
+
         self._maneuver_attempted = True
         extra_distance_m = -early_s * max(self._progress_speed_mps, 1.0)
+        # Manevra kalan rota poligonunu izler: mevcut konum, henuz gecilmemis
+        # rota noktalari ve hedef. Konumdan hedefe duz cizgi cekmek aradaki
+        # waypoint'leri atlar ve sapma manevradan degil rotanin kesilmesinden
+        # gelir (olculen: 91 m planlanan ofsete karsi 812 m gercek sapma).
+        remaining_route = (position, *self._config.route[self._active_wp_index:])
         maneuver = plan_s_maneuver(
-            position,
-            self._config.target,
+            remaining_route,
             extra_distance_m,
             turn_radius_m(self._config.min_airspeed_mps, MANEUVER_BANK_ANGLE_DEG),
             max_lateral_offset_m=MANEUVER_PLAN_LATERAL_LIMIT_M,
@@ -668,14 +688,20 @@ class MissionManager:
         # Yorunge, planlama anindaki konumdan baslar ve hedefte biter.
         # Hedefin kendisi hicbir zaman komut edilmez; son yaklasma AUTO'ya
         # devredilir, aksi halde arac hedefin etrafinda cember atar.
+        # Yorunge planlama anindaki konumdan baslar ve hedefte biter.
+        # Hedefin kendisi hicbir zaman komut edilmez; son yaklasma AUTO'ya
+        # devredilir, aksi halde arac hedefin etrafinda cember atar.
         with self._lock:
-            self._maneuver_path = (position, *maneuver.waypoints)
+            self._maneuver_path = maneuver.waypoints
             self._maneuver_index = 0
 
+        # Raporlanan degerler uretilen yorungeden olculmustur, istenen
+        # degerler degil; boylece 500 m denetimi ucusla ayni referansi kullanir.
         logger.info(
-            "S-MANEVRASI BASLADI | %.0f m ek mesafe | %d dongu | "
-            "yanal sapma %.0f m (sinir 500 m) | %.1f s erken",
-            extra_distance_m, maneuver.cycles, maneuver.lateral_offset_m, -early_s,
+            "S-MANEVRASI BASLADI | %.0f m ek mesafe (istenen %.0f) | %d dongu | "
+            "rota sapmasi %.0f m (sinir %.0f m) | %.1f s erken",
+            maneuver.planned_extra_distance_m, extra_distance_m, maneuver.cycles,
+            maneuver.max_route_deviation_m, MAX_ROUTE_DEVIATION_M, -early_s,
         )
 
     def _fly_maneuver(self, position: LatLon) -> None:

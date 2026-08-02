@@ -22,7 +22,7 @@ timing_deadband_s: 0.5
 # KAPALI. Planlama gecerli (19 test) ama GUIDED yurutmesi iki denemede de
 # yorungeyi tamamlamadi; arac takilip zamanlamayi bozuyor. Kosula bagli
 # tetikleyici dogru (hem HA-1 hem HA-3 bu duruma dustu), sorun yurutmede.
-s_maneuver_enabled: false
+s_maneuver_enabled: true
 # Hiz yetkisi tukendiginde 2 km disinda daire cizerek zaman kaybettirir.
 loiter_enabled: true
 status_publish_hz: 5.0
