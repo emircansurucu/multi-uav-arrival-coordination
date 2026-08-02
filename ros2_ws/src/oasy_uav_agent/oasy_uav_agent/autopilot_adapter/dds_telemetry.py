@@ -9,7 +9,7 @@ import math
 import threading
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 from geographic_msgs.msg import GeoPoseStamped
 from geometry_msgs.msg import TwistStamped, Vector3Stamped
@@ -24,12 +24,6 @@ AIRSPEED_TOPIC = "/ap/airspeed"
 QOS_DEPTH = 10
 
 
-def yaw_from_quaternion(x: float, y: float, z: float, w: float) -> float:
-    """ENU cercevesinde yaw acisi (dogu ekseninden, saat yonunun tersine).
-
-    SITL'de 11 derece NED kalkis yonu icin 78.7 derece olculerek dogrulandi.
-    """
-    return math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
 # EKF origin kurulmadan once geopose sifir koordinat yayinliyor. Gorev
 # alani bu noktadan binlerce kilometre uzakta oldugu icin sifira yakin
 # konumlar gecersiz sayilir.
@@ -52,12 +46,19 @@ class TelemetrySnapshot:
     # ENU bileseni; ETA rota dogrultusundaki izdusumu icin vektore ihtiyac duyar.
     velocity_east_mps: float
     velocity_north_mps: float
-    # Govde cercevesinde (FLU) gercek hava hizi vektoru ve ENU yaw acisi;
-    # ruzgar kestirimi bu ikisini yer hizindan cikararak yapilir.
+    # Govde cercevesinde (FLU) gercek hava hizi vektoru ve aracin tam
+    # yonelimi; ruzgar kestirimi vektoru yonelimle ENU'ya cevirip yer
+    # hizindan cikarir. Yalnizca yaw yetmez: EKF vektoru tam yonelimle
+    # govdeye dondurdugu icin tirmanista pitch, donuslerde roll hata birakir.
     airspeed_forward_mps: float
     airspeed_left_mps: float
-    yaw_rad: float
+    airspeed_up_mps: float
+    orientation_xyzw: Tuple[float, float, float, float]
     updated_monotonic_ns: int
+    # Yer hizi ve hava hizi ayri konularda yayinlandigi icin kendi
+    # damgalarini tasirlar; ruzgar kestirimi ucunun es zamanli olmasini ister.
+    twist_monotonic_ns: int
+    airspeed_monotonic_ns: int
 
     @property
     def groundspeed_mps(self) -> float:
@@ -65,7 +66,11 @@ class TelemetrySnapshot:
 
     @property
     def airspeed_mps(self) -> float:
-        return math.hypot(self.airspeed_forward_mps, self.airspeed_left_mps)
+        return math.sqrt(
+            self.airspeed_forward_mps ** 2
+            + self.airspeed_left_mps ** 2
+            + self.airspeed_up_mps ** 2
+        )
 
     @property
     def valid(self) -> bool:
@@ -75,6 +80,24 @@ class TelemetrySnapshot:
         if not self.valid:
             return math.inf
         return (now_monotonic_ns - self.updated_monotonic_ns) / 1e9
+
+    @property
+    def wind_sample_spread_s(self) -> float:
+        """Ruzgar kestiriminde kullanilan uc ornegin zaman yayilimi.
+
+        snapshot() her konunun son degerini birlestirir; ornekler farkli
+        anlara aitse yer hizi ile hava hizi vektorlerinin farki gercek
+        ruzgari vermez. Ucu de 33 ms'de bir yayinlandigi icin normalde
+        yayilim bir periyodu asmaz.
+        """
+        stamps = (
+            self.updated_monotonic_ns,
+            self.twist_monotonic_ns,
+            self.airspeed_monotonic_ns,
+        )
+        if min(stamps) <= 0:
+            return math.inf
+        return (max(stamps) - min(stamps)) / 1e9
 
 
 class DdsTelemetry:
@@ -88,8 +111,11 @@ class DdsTelemetry:
         self._velocity_north_mps = 0.0
         self._airspeed_forward_mps = 0.0
         self._airspeed_left_mps = 0.0
-        self._yaw_rad = 0.0
+        self._airspeed_up_mps = 0.0
+        self._orientation_xyzw = (0.0, 0.0, 0.0, 1.0)
         self._updated_monotonic_ns = 0
+        self._twist_monotonic_ns = 0
+        self._airspeed_monotonic_ns = 0
         self.invalid_position_count = 0
 
         # AP_DDS yayinci QoS'u garanti edilmedigi icin abone tarafi
@@ -108,7 +134,7 @@ class DdsTelemetry:
         with self._lock:
             self._position = LatLon(position.latitude, position.longitude)
             self._altitude_msl_m = position.altitude
-            self._yaw_rad = yaw_from_quaternion(
+            self._orientation_xyzw = (
                 orientation.x, orientation.y, orientation.z, orientation.w
             )
             self._updated_monotonic_ns = time.monotonic_ns()
@@ -118,11 +144,14 @@ class DdsTelemetry:
         with self._lock:
             self._velocity_east_mps = linear.x
             self._velocity_north_mps = linear.y
+            self._twist_monotonic_ns = time.monotonic_ns()
 
     def _on_airspeed(self, msg: Vector3Stamped) -> None:
         with self._lock:
             self._airspeed_forward_mps = msg.vector.x
             self._airspeed_left_mps = msg.vector.y
+            self._airspeed_up_mps = msg.vector.z
+            self._airspeed_monotonic_ns = time.monotonic_ns()
 
     def snapshot(self) -> TelemetrySnapshot:
         with self._lock:
@@ -133,6 +162,9 @@ class DdsTelemetry:
                 velocity_north_mps=self._velocity_north_mps,
                 airspeed_forward_mps=self._airspeed_forward_mps,
                 airspeed_left_mps=self._airspeed_left_mps,
-                yaw_rad=self._yaw_rad,
+                airspeed_up_mps=self._airspeed_up_mps,
+                orientation_xyzw=self._orientation_xyzw,
                 updated_monotonic_ns=self._updated_monotonic_ns,
+                twist_monotonic_ns=self._twist_monotonic_ns,
+                airspeed_monotonic_ns=self._airspeed_monotonic_ns,
             )

@@ -84,19 +84,24 @@ class PeerManager:
             result[vehicle_id] = record.status.earliest_feasible_arrival_monotonic_ns
         return result
 
-    def latest_wind(self, now_monotonic_ns: int) -> Optional[Tuple[float, float]]:
-        """Kaybolmamis peer'lardan en tazesinin olctugu ruzgar (hiz, yon)."""
-        newest_ns = -1
-        result: Optional[Tuple[float, float]] = None
-        for vehicle_id, record in self.snapshot().items():
+    def settled_wind(self, now_monotonic_ns: int) -> Optional[Tuple[float, float]]:
+        """Ruzgari oturmus peer'lar icinde en kucuk id'ninki (hiz, yon).
+
+        En taze mesaji secmek cazip gorunuyor ama iki arac ayni anda
+        havadayken agent saniyede birkac kez ikisinin tahmini arasinda
+        ziplar; nominal ucus suresi her siçramada yeniden hesaplanir ve
+        araclar birbirinin gurultusunu besler. Sabit bir sira, uc agentin
+        de ayni kaynagi secmesini garanti eder.
+        """
+        peers = self.snapshot()
+        for vehicle_id in sorted(peers):
+            record = peers[vehicle_id]
             if not record.status.wind_valid:
                 continue
             if self.freshness(vehicle_id, now_monotonic_ns) is PeerFreshness.LOST:
                 continue
-            if record.received_monotonic_ns > newest_ns:
-                newest_ns = record.received_monotonic_ns
-                result = (record.status.wind_speed, record.status.wind_dir_deg)
-        return result
+            return (record.status.wind_speed, record.status.wind_dir_deg)
+        return None
 
     def freshness(self, vehicle_id: int, now_monotonic_ns: int) -> PeerFreshness:
         age = self.age_s(vehicle_id, now_monotonic_ns)

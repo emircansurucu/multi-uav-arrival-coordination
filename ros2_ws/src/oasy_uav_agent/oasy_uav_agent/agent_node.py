@@ -214,7 +214,7 @@ def main() -> int:
         coordination.peers.committed_arrivals,
         coordination.peers.feasible_arrivals,
         vehicle.guided,
-        coordination.peers.latest_wind,
+        coordination.peers.settled_wind,
     )
     coordination.node.create_timer(
         1.0 / config.status_publish_hz,

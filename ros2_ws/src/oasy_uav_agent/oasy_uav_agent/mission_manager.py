@@ -32,6 +32,7 @@ from .estimation.arrival_detector import ArrivalDetector
 from .estimation.eta_estimator import EtaEstimator, route_length_m
 from .estimation.wind_estimator import (
     WindEstimate,
+    WindFilter,
     estimate_wind,
     route_duration_with_wind_s,
     wind_from_speed_direction,
@@ -51,11 +52,18 @@ TELEMETRY_TIMEOUT_S = 3.0
 # Vaka dokumani madde 4: mesafe yedirme manevralarinda rotadan sapma en
 # fazla 500 m olabilir. Asilirsa uyari uretilir.
 MAX_ROUTE_DEVIATION_M = 500.0
-# Ulasilabilirlik tahmini donuslerdeki anlik ilerleme dususlerine tepki
-# vermemeli; ETA filtresinden cok daha yavas bir zaman sabiti kullanilir.
-FEASIBILITY_FILTER_TAU_S = 30.0
-# Filtrelenmis ilerleme bu degerin altina duserse tahmin anlamsizlasir.
-MIN_FEASIBLE_PROGRESS_MPS = 5.0
+# Loiter, hedefe 2 km'den yakinda yasaktir (madde 6). Daire yaricapi
+# WP_LOITER_RAD kadar oldugu icin cemberin hicbir noktasi yasak bolgeye
+# girmemeli; ustune olcum ve cikis gecikmesi icin pay birakilir.
+MIN_LOITER_DISTANCE_M = 2500.0
+# Bu kadar erken kalindiginda loiter'a girilir. Hiz yetkisi once tuketilir;
+# esik, asgari hizda bile kapatilamayan farki yakalayacak kadar buyuk.
+LOITER_TRIGGER_S = 8.0
+# Anlik ETA sicramalari loiter baslatmasin diye ardisik tick dogrulamasi.
+LOITER_CONFIRM_TICKS = 40
+# Loiter'dan cikis esigi. Girisden kucuk tutulur ki cikar cikmaz tekrar
+# girilmesin (histerezis).
+LOITER_EXIT_S = 1.0
 # Capa bu esikten az kaydiginda log uretilmez.
 ANCHOR_LOG_THRESHOLD_S = 1.0
 # S-manevrasi yalnizca hiz yetkisi tukendiginde devreye girer: arac
@@ -79,6 +87,10 @@ MANEUVER_HANDOVER_M = 300.0
 # Ruzgar kestiriminin gecerli sayilmasi icin gereken en dusuk hava hizi;
 # yerde ve kalkis kosusunda olculen degerler anlamsizdir.
 MIN_WIND_ESTIMATE_AIRSPEED_MPS = 10.0
+# Konum, yer hizi ve hava hizi 33 ms'de bir yayinlanir; bu esigi asan
+# yayilim, konulardan birinin durdugu (AP_DDS yayini tikandigi) anlamina
+# gelir ve o ornekten cikarilan ruzgar gercek degildir.
+MAX_WIND_SAMPLE_SPREAD_S = 0.2
 
 
 class MissionState(IntEnum):
@@ -107,6 +119,13 @@ AIRBORNE_STATES = frozenset({
     MissionState.TAKEOFF, MissionState.CLIMB,
     MissionState.CRUISE, MissionState.TERMINAL,
 })
+
+# Ulasilabilirlik yalnizca gorevi henuz tamamlamamis araclar icin anlamlidir.
+# Varan bir arac capaya katilmayi surduremez: hedefe gitmedigi icin "en erken
+# varis" degeri anlamsizlasir ve hala ucan araclari yanlis yonlendirir.
+PRE_ARRIVAL_STATES = frozenset(
+    state for state in MissionState if state < MissionState.ARRIVED
+)
 
 
 @dataclass(frozen=True)
@@ -187,12 +206,17 @@ class MissionManager:
         # olculur, bir onceki kaymaya gore degil. Aksi halde her tick'teki
         # kucuk kaymalar birikip plani sonsuza kadar ileri itiyor.
         self._nominal_plan_ns = 0
-        self._filtered_progress_mps: Optional[float] = None
-        self._feasibility_filter_ns = 0
         self._maneuver_path: Tuple[LatLon, ...] = ()
         self._maneuver_index = 0
         self._maneuver_attempted = False
         self._trigger_streak = 0
+        self._loitering = False
+        self._loiter_streak = 0
+        self._loiter_entry_eta_s = 0.0
+        self._wind_filter = WindFilter()
+        self._last_wind_sample_ns = 0
+        # Yalnizca filtre oturduktan sonra doldurulur; oturmamis kestirim
+        # ne plan hesabinda kullanilir ne de peer'lara yayinlanir.
         self._wind: Optional[WindEstimate] = None
         # Gercek kalkis ani; ruzgar sonradan ogrenilince plan
         # bu ana gore yeniden hesaplanir.
@@ -276,7 +300,13 @@ class MissionManager:
             # Yerde de calismali: oncu tirmanista ruzgari ogrenip planini
             # ileri cekince, henuz kalkmamis takipciler bunu izleyip kendi
             # slotlarini guncelleyebilmeli.
-            self._revise_plan(time.monotonic_ns())
+            now_ns = time.monotonic_ns()
+            self._revise_plan(now_ns)
+            # Ulasilabilirlik ve capa da yerde islemeli: yerdeki aracin
+            # kalkis slotu _planned_arrival_ns'den turetildigi icin capa
+            # oraya ulastiginda duzeltme bedava (havada bekleme yok).
+            self._update_feasible_arrival(now_ns)
+            self._apply_feasible_anchor(now_ns)
         handler = _HANDLERS.get(self.state)
         if handler is not None:
             handler(self)
@@ -307,7 +337,12 @@ class MissionManager:
             self._transition(MissionState.WAIT_PEERS)
 
     def _known_wind(self, now_ns: int) -> Optional[WindEstimate]:
-        """Kendi olcumu varsa onu, yoksa havadaki bir peer'inkini kullanir."""
+        """Kendi kestirimi oturmussa onu, yoksa bir peer'inkini kullanir.
+
+        Kalkis aninda kendi ham olcumune atlanmaz: filtre oturana kadar
+        peer'in oturmus degeri kullanilir. Aksi halde plan tam kurulurken
+        tek ornekten cikan sapmali bir ruzgara dayanirdi.
+        """
         if self._wind is not None:
             return self._wind
         wind_pair = self._peer_wind(now_ns)
@@ -453,8 +488,116 @@ class MissionManager:
         if position is None:
             return
         self._coordinate_and_regulate()
+        if self._handle_loiter(position):
+            return
         if geodesic_distance_m(position, self._config.target) <= TERMINAL_RADIUS_M:
             self._transition(MissionState.TERMINAL)
+
+    def _handle_loiter(self, position: LatLon) -> bool:
+        """Fazla erken kalindiginda daire cizerek zaman kaybettirir.
+
+        Hiz yetkisi tukendiginde (asgari hava hizinda hala erken) havada
+        zaman kaybetmenin dokumandaki tek serbest yolu budur; S-manevrasi
+        henuz kullanilabilir degil. Daire kapali oldugu icin arac rota
+        boyunca ilerlemez ve gecen surenin tamami kazanilir.
+
+        Loiter yalnizca hedefe 2 km'den uzakta serbesttir (madde 6), bu
+        yuzden yalnizca CRUISE'da ve mesafe payiyla birlikte denenir.
+        Cikis kapali cevrimdir: zamanlama hatasi kapaninca AUTO'ya donulur,
+        boylece tur sayisi hesaplamak ve ruzgarin tur suresine etkisini
+        modellemek gerekmez.
+
+        True donerse bu tick'te gorev akisi ilerletilmez.
+        """
+        if not self._config.loiter_enabled or self._guided is None:
+            return False
+
+        if self._loitering:
+            if self._loiter_remaining_early_s() <= LOITER_EXIT_S:
+                self._exit_loiter()
+                return False
+            return True
+
+        distance_m = geodesic_distance_m(position, self._config.target)
+        early_s = self._timing_error_s()
+        at_min_airspeed = math.isclose(
+            self._controller.commanded_airspeed_mps,
+            self._config.min_airspeed_mps,
+            abs_tol=0.2,
+        )
+        if (
+            early_s > -LOITER_TRIGGER_S
+            or not at_min_airspeed
+            or distance_m < MIN_LOITER_DISTANCE_M
+        ):
+            self._loiter_streak = 0
+            return False
+
+        self._loiter_streak += 1
+        if self._loiter_streak < LOITER_CONFIRM_TICKS:
+            return False
+
+        self._enter_loiter(position, early_s, distance_m)
+        return True
+
+    def _enter_loiter(self, position: LatLon, early_s: float, distance_m: float) -> None:
+        # Daire merkezi mevcut konumdur: arac rotanin uzerindeyken girdigi
+        # icin cemberin rotaya uzakligi yaricap kadar kalir ve 500 m sinirinin
+        # cok altindadir.
+        self._commander.set_mode("GUIDED")
+        self._guided.send(position, self._config.cruise_alt_msl_m)
+        with self._lock:
+            self._loitering = True
+            # Daire kapali oldugu icin arac ayni noktaya doner ve hedefe
+            # uzakligi degismez: giristeki ETA cikisa kadar gecerli kalir.
+            self._loiter_entry_eta_s = self._eta_s
+        logger.info(
+            "LOITER BASLADI | %.1f s erken | hedefe %.0f m (sinir %.0f m)",
+            -early_s, distance_m, MIN_LOITER_DISTANCE_M,
+        )
+
+    def _model_eta_s(self, position: LatLon) -> float:
+        """Kalan rotanin komut edilen hava hiziyla ve ruzgar altinda suresi.
+
+        Kalan mesafeyi olculen ilerleme hizina bolmek, o hizin rotanin geri
+        kalaninda da gecerli olacagini varsayar. 8 m/s ruzgarda bacaklar
+        farkli yonlere baktigi icin yer hizi 15.9-18.8 arasinda gercekten
+        degisiyor; ETA her donuste ~30 saniye ziplyor ve zamanlama hatasi
+        +-15 s salinyordu. Salinan bir hataya kontrolcu kalici duzeltme
+        uygulayamaz: HA-3, 79 saniyelik yavaslama yetkisi oldugu halde
+        asgari hava hizina hic inmiyordu.
+
+        Model her bacagin kendi ruzgar bilesenini ayri hesaplar ve olculen
+        hiz terimi icermedigi icin pürüzsüzdur.
+        """
+        wind = self._known_wind(time.monotonic_ns()) or WindEstimate(
+            east_mps=0.0, north_mps=0.0
+        )
+        return route_duration_with_wind_s(
+            position,
+            self._config.route[self._active_wp_index:],
+            self._controller.commanded_airspeed_mps,
+            wind,
+        )
+
+    def _loiter_remaining_early_s(self) -> float:
+        """Daire cizerken kapatilmasi kalan erkenlik.
+
+        Canli ETA kullanilamaz: daire cizerken rota dogrultusundaki ilerleme
+        cokuyor, ETA siisiyor ve zamanlama hatasi gercekte zaman kazanilmadan
+        kapanmis gorunuyor (olculen: 16.5 s erken girilip 4 s sonra cikildi).
+        Giristeki ETA sabit tutulur; erkenlik yalnizca gecen sureyle kapanir.
+        """
+        remaining_s = (self._planned_arrival_ns - time.monotonic_ns()) / 1e9
+        return remaining_s - self._loiter_entry_eta_s
+
+    def _exit_loiter(self) -> None:
+        kalan_s = self._loiter_remaining_early_s()
+        self._commander.set_mode("AUTO")
+        with self._lock:
+            self._loitering = False
+            self._loiter_streak = 0
+        logger.info("LOITER BITTI | kalan erkenlik %.1f s", kalan_s)
 
     def _on_terminal(self) -> None:
         position = self._track_arrival()
@@ -568,19 +711,25 @@ class MissionManager:
         return self._eta_s - remaining_s
 
     def _coordinate_and_regulate(self) -> None:
-        """Ulasilabilirligi yayina hazirlar, capayi uygular, hizi duzenler."""
-        now_ns = time.monotonic_ns()
-        self._update_feasible_arrival(now_ns)
-        self._apply_feasible_anchor(now_ns)
+        """Hizi duzenler; ulasilabilirlik ve capa her tick'te step()'te isler."""
         self._regulate_speed()
 
     def _revise_plan(self, now_ns: int) -> None:
         """Ruzgar ogrenilince plani ileri ceker; asla one almaz.
 
-        Oncu arac kalkis aninda taahhut verirken ruzgari bilmiyor. Ruzgarsiz
-        nominal sure fazla iyimser oldugu icin butun takvim sikisiyor ve
-        takipciler ulasamiyor. Oncu kendi planini duzeltince takipciler de
-        yeni taahhudu izleyerek kendilerininkini ileri ceker.
+        Taahhut anlarinda ruzgar bilinmiyor: oncu henuz havalanmadigi icin
+        kimse olcmemis oluyor. Ruzgarsiz nominal sure fazla iyimser oldugu
+        icin butun takvim sikisiyor.
+
+        Duzeltmeyi yalnizca oncu kendi olcumunden yapar; takipciler oncunun
+        taahhudundeki kaymayi izler. Takipciye de kendi olcumune dayali
+        duzeltme verilmesi denendi ve geri alindi: havadaki arac kestirimi
+        oturur oturmaz tek seferlik duzeltmeyi yapiyor, tirmanis sirasinda
+        olculen ruzgar ise henuz sapmali oluyor ve bu deger kalicilasiyor.
+        Olcumu tekrar tekrar duzeltebilen yerdeki arac yakinsiyor, havadaki
+        arac rastgele bir ana kilitleniyordu (bkz. run_20260802_015849:
+        HA-2 6.3 m/s @ 24 derece olcup nominali 538 -> 728 s yapti,
+        HA-2 - HA-1 arasi 105 s'ye cikti).
 
         Kaydirma tek yonlu: geriye alinsaydi doygun bir araca imkansiz bir
         hedef verilebilirdi.
@@ -624,46 +773,61 @@ class MissionManager:
     def _update_feasible_arrival(self, now_ns: int) -> None:
         """Azami hava hiziyla ulasilabilecek en erken varis anini gunceller.
 
-        Ruzgar hava hizina eklenir, onu olceklemez: azami hizdaki ilerleme
-        olculen ilerlemeye kalan hiz yetkisinin eklenmesiyle bulunur.
-        Carpimsal model donuslerde ilerleme dustugunde tahmini cokertiyor.
+        Tahmin, anlik rota ilerlemesine bolmek yerine ruzgar duzeltmeli rota
+        modelinden uretilir. Anlik ilerleme tirmanista ve donuslerde sifira
+        yaklastigi icin bolum patliyordu; olculen capa on saniyede yuzlerce
+        saniye salinabiliyordu. Model, olcumu rota ilerlemesi yerine ruzgar
+        kestirimi uzerinden alir: ayni bilgi, cok daha az gurultu.
 
-        Ilerleme, donus ve gecici bozulmalara tepki vermemesi icin ayrica
-        yavas bir filtreden gecirilir.
+        Modelin ikinci faydasi, aracin yerde de ulasilabilirlik bildirebilmesi.
+        Yerdeki arac icin en ucuz duzeltme kalkisi ertelemektir (madde 8:
+        havada bekleme en aza indirilmeli) ama bunu yapabilmesi icin takvimin
+        sikistigini kalkmadan once ogrenmesi gerekir.
         """
         # Manevra sirasinda arac bilerek yoldan sapiyor; rota dogrultusundaki
         # ilerlemesi duser ama YAPABILECEGI degismez. Olculen degeri kullanmak
         # ulasilabilirligi cokertip capayi geriye itiyor, bu da daha fazla
         # manevra gerektiriyordu: pozitif geri besleme. Manevra boyunca son
         # temiz tahmin dondurulur.
-        if self._maneuver_path:
+        if self._maneuver_path or self._loitering:
             return
 
-        max_airspeed = self._config.max_airspeed_mps
-        commanded = self._controller.commanded_airspeed_mps
+        # Varistan sonra arac RTL'e gecip hedeften uzaklasir; "kalan rota"
+        # tanimsizlasir ve model dali kullanilsaydi gorev bastan
+        # baslayacakmis gibi tum rota suresi eklenirdi.
+        #
+        # Yerine gercek varis ani yayinlanir. Bu bir tahmin degil olgudur ve
+        # capayi gerceklige baglar. Sifir yayinlamak denenip geri alindi:
+        # varan araclar capa kumesinden dustukce capa cokuyor ve en son
+        # varacak arac, digerlerinin ucmus oldugu kaymayi kaybedip ham
+        # nominal planina donuyordu (olculen: [1,2,3] uzerinde +15.0 s olan
+        # capa, [3] tek basina kalinca 0.0 s).
+        if self.state not in PRE_ARRIVAL_STATES:
+            with self._lock:
+                self._feasible_arrival_ns = self._detector.arrival_monotonic_ns or 0
+            return
 
-        if self._progress_speed_mps <= 0.0 or self._remaining_distance_m <= 0.0:
-            seconds = route_length_m(self._config.home, self._config.route) / max_airspeed
-        else:
-            filtered = self._filter_progress(self._progress_speed_mps, now_ns)
-            max_progress_mps = max(
-                filtered + (max_airspeed - commanded), MIN_FEASIBLE_PROGRESS_MPS
+        wind = self._known_wind(now_ns) or WindEstimate(east_mps=0.0, north_mps=0.0)
+        max_airspeed = self._config.max_airspeed_mps
+        snapshot = self._telemetry.snapshot()
+
+        if self.state in AIRBORNE_STATES and snapshot.valid:
+            start_ns = now_ns
+            seconds = route_duration_with_wind_s(
+                snapshot.position,
+                self._config.route[self._active_wp_index:],
+                max_airspeed,
+                wind,
             )
-            seconds = self._remaining_distance_m / max_progress_mps
+        else:
+            # Henuz kalkmadi: en erken varis, planlanan kalkis anina bagli.
+            start_ns = max(now_ns, self._takeoff_time_ns)
+            seconds = route_duration_with_wind_s(
+                self._config.home, self._config.route, max_airspeed, wind
+            )
 
         with self._lock:
-            self._feasible_arrival_ns = now_ns + int(seconds * NANOSECONDS_PER_SECOND)
-
-    def _filter_progress(self, raw_mps: float, now_ns: int) -> float:
-        if self._filtered_progress_mps is None or self._feasibility_filter_ns == 0:
-            self._filtered_progress_mps = raw_mps
-        else:
-            dt_s = (now_ns - self._feasibility_filter_ns) / 1e9
-            if dt_s > 0.0:
-                alpha = 1.0 - math.exp(-dt_s / FEASIBILITY_FILTER_TAU_S)
-                self._filtered_progress_mps += alpha * (raw_mps - self._filtered_progress_mps)
-        self._feasibility_filter_ns = now_ns
-        return self._filtered_progress_mps
+            self._feasible_arrival_ns = start_ns + int(seconds * NANOSECONDS_PER_SECOND)
 
     def _apply_feasible_anchor(self, now_ns: int) -> None:
         """Ortak capayi hesaplar ve plan ulasilamaz kaldiysa ileri kaydirir.
@@ -744,15 +908,36 @@ class MissionManager:
             return
         if snapshot.altitude_msl_m < self._config.takeoff_alt_msl_m:
             return
+        if snapshot.wind_sample_spread_s > MAX_WIND_SAMPLE_SPREAD_S:
+            return
         wind = estimate_wind(
             (snapshot.velocity_east_mps, snapshot.velocity_north_mps),
-            (snapshot.airspeed_forward_mps, snapshot.airspeed_left_mps),
-            snapshot.yaw_rad,
+            (
+                snapshot.airspeed_forward_mps,
+                snapshot.airspeed_left_mps,
+                snapshot.airspeed_up_mps,
+            ),
+            snapshot.orientation_xyzw,
         )
         if wind is None:
             return
+
+        # Sure, isleme ani degil ornegin kendi damgasi uzerinden olculur:
+        # telemetri duraklarsa ayni ornek tekrar tekrar okunur ve isleme
+        # anina gore hesaplanan dt filtreyi olmayan veriyle ilerletirdi.
+        sample_ns = snapshot.updated_monotonic_ns
+        # Ilk ornekte gecen sure bilinmedigi icin tick araligi varsayilir.
+        dt_s = (
+            (sample_ns - self._last_wind_sample_ns) / NANOSECONDS_PER_SECOND
+            if self._last_wind_sample_ns > 0
+            else TICK_INTERVAL_S
+        )
+        self._last_wind_sample_ns = sample_ns
+        self._wind_filter.update(wind, dt_s)
+        if not self._wind_filter.settled:
+            return
         with self._lock:
-            self._wind = wind
+            self._wind = self._wind_filter.estimate
 
     def _track_route_deviation(self, position: LatLon, active_index: int) -> None:
         """Aktif bacaga olan dik uzakligi izler ve 500 m sinirini denetler."""
@@ -797,10 +982,10 @@ class MissionManager:
                 snapshot.updated_monotonic_ns,
             )
             with self._lock:
-                self._eta_s = eta.eta_s
                 self._remaining_distance_m = eta.remaining_distance_m
                 self._active_wp_index = eta.active_index
                 self._progress_speed_mps = eta.progress_speed_mps
+                self._eta_s = self._model_eta_s(snapshot.position)
             self._track_route_deviation(snapshot.position, eta.active_index)
 
         with self._lock:
