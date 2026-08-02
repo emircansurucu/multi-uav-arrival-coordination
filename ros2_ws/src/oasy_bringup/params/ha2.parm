@@ -3,3 +3,27 @@ DDS_ENABLE 1
 DDS_DOMAIN_ID 2
 DDS_UDP_PORT 2020
 DDS_MAX_RETRY 0
+
+# Hava hizi sensoru varsayilan olarak takili (ARSPD_TYPE 2) ama EKF
+# fuzyonuna kapali (ARSPD_USE 0). Kapaliyken EKF ruzgar durumunu yalnizca
+# GPS yer hizindan ve manevralardan cikarabiliyor; EK3_WIND_P_NSE 0.1 ile
+# bu cok yavas ve degisken ruzgarda ilk degerde donuyor.
+#
+# Bu dogrudan bizi etkiliyor: /ap/airspeed konusu "yer hizi - EKF ruzgari"
+# olarak turetildigi icin (NavEKF3_core::getAirSpdVec), bizim
+# "ruzgar = yer hizi - hava hizi" hesabimiz cebirsel olarak EKF'in ruzgar
+# durumunu geri okumaktan ibaret. O durum donunca kestirimimiz de donuyor.
+#
+# Olculen: SITL ruzgari 5 m/s 45 dereceden iken kestirim 4.2 m/s
+# 215 dereceden, yani yon 170 derece ters.
+ARSPD_USE 1
+
+# EKF ruzgar durumunun sureç gurultusu. Varsayilan 0.1 m/s/s, yani EKF
+# ruzgarin saniyede en fazla 0.1 m/s degistigini varsayiyor. Degisken ruzgar
+# senaryosunda profil 5 m/s'lik degisimi ~20 saniyede yapiyor (0.25 m/s/s),
+# yani varsayimin iki katindan fazla; EKF tasarim geregi geride kaliyor.
+# Olculen gecikme ~120 s ve profil 180 s'de bir degistigi icin kestirim
+# surekli bir basamak geride kaliyordu.
+# 0.5 degeri gercek degisim hizinin ustunde secildi (parametre araligi
+# 0.01-2.0); daha yuksek degerler kestirimi gereksiz gurultulu yapar.
+EK3_WIND_P_NSE 0.5

@@ -130,10 +130,30 @@ def _log_progress(logger, snapshot, age_s, mission, coordination, config, now_ns
         (now_ns + mission.eta_s * 1e9 - mission.planned_arrival_monotonic_ns) / 1e9
         if mission.arrival_committed else float("nan")
     )
+    # Capa kaymasi: calisma plani ile peer'lara taahhut edilen plan arasindaki
+    # fark. Degisken ruzgarda planin araci takip edip etmedigini gormek icin
+    # gerekli; capa log'u yalnizca 1 saniyelik siçramalarda yaziyor ve yavas
+    # birikmeyi gostermiyor.
+    anchor_shift_s = (
+        (mission.planned_arrival_monotonic_ns - mission.committed_plan_monotonic_ns) / 1e9
+        if mission.arrival_committed else float("nan")
+    )
+    wind_text = (
+        f"{mission.wind_speed_mps:.1f} m/s {mission.wind_from_direction_deg:.0f}d"
+        if mission.wind_valid else "yok"
+    )
+    # Taahhut edilen plana kalan sure. Plan revizyonu yalnizca >=1 s kaymalari
+    # logluyor; kucuk kaymalar birikip sessizce plani oynatabiliyor.
+    committed_in_s = (
+        (mission.committed_plan_monotonic_ns - now_ns) / 1e9
+        if mission.arrival_committed else float("nan")
+    )
     logger.info(
         f"{state_name} | WP{mission.active_wp_index} | "
         f"rota kalan {mission.remaining_distance_m:.0f} m | ETA {mission.eta_s:.0f} s | "
-        f"zamanlama hatasi {plan_error_s:+.1f} s | "
+        f"zamanlama hatasi {plan_error_s:+.1f} s | capa {anchor_shift_s:+.1f} s | "
+        f"plan T+{committed_in_s:.0f} s | "
+        f"ruzgar {wind_text} | "
         f"komut {mission.commanded_airspeed_mps:.1f} m/s | "
         f"yer hizi {snapshot.groundspeed_mps:.1f} m/s | "
         f"irtifa {snapshot.altitude_msl_m:.0f} m MSL | "

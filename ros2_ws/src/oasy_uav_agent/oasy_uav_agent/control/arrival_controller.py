@@ -83,10 +83,27 @@ class ArrivalController:
         planned_arrival_monotonic_ns: int,
         now_monotonic_ns: int,
         dt_s: float,
+        max_airspeed_override: Optional[float] = None,
     ) -> Optional[SpeedCommand]:
-        """Yeni hiz komutunu hesaplar. Kontrol uygulanamiyorsa None doner."""
+        """Yeni hiz komutunu hesaplar. Kontrol uygulanamiyorsa None doner.
+
+        max_airspeed_override, son yaklasmada hiz tavanini gecici olarak
+        indirmek icindir: azami hizda L1 kontrolcusunun donus yaricapi
+        buyuyor ve waypoint kesilemiyor.
+        """
         if planned_arrival_monotonic_ns <= 0:
             return None
+
+        ceiling_mps = self._max_airspeed_mps
+        if max_airspeed_override is not None:
+            ceiling_mps = min(
+                ceiling_mps, max(max_airspeed_override, self._min_airspeed_mps)
+            )
+        # Tavan indiyse komut deadband icinde bile hemen asagi cekilir;
+        # aksi halde zamanlama hatasi sifira yakinken yuksek hizda takili
+        # kalinir ve son yaklasma bozulur.
+        if self._commanded_mps > ceiling_mps:
+            self._commanded_mps = ceiling_mps
 
         remaining_time_s = (
             planned_arrival_monotonic_ns - now_monotonic_ns
@@ -96,6 +113,11 @@ class ArrivalController:
 
         timing_error_s = eta_s - remaining_time_s
         if abs(timing_error_s) <= self._deadband_s:
+            # Tavan indirilmis olabilir; o durumda komut degismistir ve
+            # otopilota gonderilmelidir.
+            changed = abs(self._commanded_mps - self._last_sent_mps) >= MIN_COMMAND_STEP_MPS
+            if changed:
+                self._last_sent_mps = self._commanded_mps
             return SpeedCommand(
                 action=ControlAction.HOLD,
                 airspeed_mps=self._commanded_mps,
@@ -104,14 +126,14 @@ class ArrivalController:
                 deadband_active=True,
                 saturated=False,
                 rate_limited=False,
-                changed=False,
+                changed=changed,
             )
 
         if eta_s <= 0.0:
             return None
 
         required_mps = self._commanded_mps * (eta_s / remaining_time_s)
-        target_mps = _clamp(required_mps, self._min_airspeed_mps, self._max_airspeed_mps)
+        target_mps = _clamp(required_mps, self._min_airspeed_mps, ceiling_mps)
         saturated = not math.isclose(target_mps, required_mps, rel_tol=1e-9)
 
         delta_mps = target_mps - self._commanded_mps
@@ -121,7 +143,7 @@ class ArrivalController:
             delta_mps = math.copysign(max_delta_mps, delta_mps)
 
         self._commanded_mps = _clamp(
-            self._commanded_mps + delta_mps, self._min_airspeed_mps, self._max_airspeed_mps
+            self._commanded_mps + delta_mps, self._min_airspeed_mps, ceiling_mps
         )
         changed = abs(self._commanded_mps - self._last_sent_mps) >= MIN_COMMAND_STEP_MPS
         if changed:

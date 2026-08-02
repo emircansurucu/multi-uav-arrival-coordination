@@ -62,6 +62,10 @@ sleep 2
 #   bir GCS baglanana kadar accept() uzerinde bloklar ve ana dongu -
 #   dolayisiyla DDS thread'i - hic calismaz. MAVProxy kullanmadigimiz icin
 #   bekleme kaldirilir; "tcp:0" instance port ofsetini korur.
+# --serial1=tcp:2: ucus sirasinda ruzgar parametrelerini degistirmek icin
+#   ikinci bir baglanti noktasi. SERIAL0'i agent kullaniyor ve SITL'in tcp
+#   portu tek istemci kabul ediyor. Port = 5760 + 10*instance + 2
+#   (UARTDriver.cpp: port <= 1000 ise base_port() + port).
 echo "[HA-${VEHICLE}] SITL baslatiliyor (instance ${INSTANCE}, konum ${LOCATION}, hiz ${SPEEDUP}x)"
 exec sim_vehicle.py \
   -v ArduPlane \
@@ -74,4 +78,4 @@ exec sim_vehicle.py \
   --enable-dds \
   -l "${LOCATION}" \
   --add-param-file="${EFFECTIVE_PARM}" \
-  -A "--serial0=tcp:0"
+  -A "--serial0=tcp:0 --serial1=tcp:2"

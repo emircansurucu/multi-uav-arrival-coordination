@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -24,6 +25,12 @@ COORDINATION_TOPIC = "/oasy/vehicle_status"
 EXPECTED_VEHICLE_IDS = (1, 2, 3)
 # Vaka dokumani: ardisik varislar arasinda tam 20 saniye.
 REQUIRED_SEPARATION_S = 20.0
+# "Tam 20 saniye" pratikte bir tolerans gerektirir; olculen dagilim +-0.65 s
+# oldugu icin kabul esigi 1 saniye secildi.
+SEPARATION_TOLERANCE_S = 1.0
+# Madde 2: hedefin kabul yaricapi 5 m. Madde 4: rotadan en fazla 500 m sapma.
+ARRIVAL_RADIUS_M = 5.0
+MAX_ROUTE_DEVIATION_M = 500.0
 NANOSECONDS_PER_SECOND = 1_000_000_000
 
 
@@ -108,6 +115,79 @@ def build_report(collector: RunCollector) -> dict:
     return report
 
 
+_LOG_SATIR = re.compile(
+    r"agent_node-(?P<arac>[0-9])\]\s+(?P<saat>[0-9]{2}:[0-9]{2}:[0-9]{2})\s+HA-[0-9]"
+)
+_VARIS = re.compile(
+    r"en yakin gecis (?P<gecis>[0-9.]+) m.*max rota sapmasi (?P<sapma>[0-9]+) m"
+)
+_YERDE_BEKLEME = re.compile(r"yerde bekleme (?P<saniye>[0-9.]+) s")
+
+
+def _saat_saniye(metin: str) -> float:
+    saat, dakika, saniye = (int(parca) for parca in metin.split(":"))
+    return saat * 3600 + dakika * 60 + saniye
+
+
+def parse_log(path: Path) -> dict:
+    """agents.log'dan madde 4, 6 ve 8 kanitlarini cikarir.
+
+    Bu degerler VehicleStatus uzerinden yayinlanmiyor (varis teshis verileri
+    peer kararlarinda kullanilmadigi icin mesaj sade tutuldu), dolayisiyla
+    tek kaynak gorev gunlugudur.
+    """
+    sonuc: dict = {}
+    loiter_baslangic: dict = {}
+    for satir in path.read_text(errors="replace").splitlines():
+        basi = _LOG_SATIR.search(satir)
+        if basi is None:
+            continue
+        arac = f"HA-{basi.group('arac')}"
+        kayit = sonuc.setdefault(
+            arac,
+            {"gecis_m": None, "max_sapma_m": None, "loiter_s": 0.0,
+             "loiter_sayisi": 0, "yerde_bekleme_s": None},
+        )
+        an = _saat_saniye(basi.group("saat"))
+
+        varis = _VARIS.search(satir)
+        if varis is not None:
+            kayit["gecis_m"] = float(varis.group("gecis"))
+            kayit["max_sapma_m"] = float(varis.group("sapma"))
+        bekleme = _YERDE_BEKLEME.search(satir)
+        if bekleme is not None and "taahhut edildi" in satir:
+            kayit["yerde_bekleme_s"] = float(bekleme.group("saniye"))
+        if "LOITER BASLADI" in satir:
+            loiter_baslangic[arac] = an
+        elif "LOITER BITTI" in satir and arac in loiter_baslangic:
+            kayit["loiter_s"] += an - loiter_baslangic.pop(arac)
+            kayit["loiter_sayisi"] += 1
+    return sonuc
+
+
+def evaluate(report: dict) -> dict:
+    """Kabul olcutu: sira, 20 s toleransi, 5 m varis, 500 m sapma."""
+    nedenler = []
+    if not report.get("sira_dogru"):
+        nedenler.append("varis sirasi yanlis")
+    for ad, degerler in report.get("farklar", {}).items():
+        if abs(degerler["sapma_s"]) > SEPARATION_TOLERANCE_S:
+            nedenler.append(
+                f"{ad}: sapma {degerler['sapma_s']:+.2f} s "
+                f"(sinir +-{SEPARATION_TOLERANCE_S:.1f} s)"
+            )
+    for ad, degerler in report.get("gunluk", {}).items():
+        gecis = degerler.get("gecis_m")
+        if gecis is None:
+            nedenler.append(f"{ad}: varis kaydi bulunamadi")
+        elif gecis > ARRIVAL_RADIUS_M:
+            nedenler.append(f"{ad}: hedefe {gecis:.2f} m (sinir {ARRIVAL_RADIUS_M:.0f} m)")
+        sapma = degerler.get("max_sapma_m")
+        if sapma is not None and sapma > MAX_ROUTE_DEVIATION_M:
+            nedenler.append(f"{ad}: rota sapmasi {sapma:.0f} m (sinir {MAX_ROUTE_DEVIATION_M:.0f} m)")
+    return {"gecti": not nedenler, "nedenler": nedenler}
+
+
 def print_report(report: dict) -> None:
     print("--- varis metrikleri ---")
     for name, values in report["varislar"].items():
@@ -118,12 +198,37 @@ def print_report(report: dict) -> None:
         print(f"{name}: {values['fark_s']:.2f} s (20 s'den sapma {values['sapma_s']:+.2f} s)")
     print(f"varis sirasi HA-1/HA-2/HA-3: {'DOGRU' if report['sira_dogru'] else 'YANLIS'}")
 
+    gunluk = report.get("gunluk") or {}
+    if gunluk:
+        print("--- gorev kurallari ---")
+        for ad, degerler in sorted(gunluk.items()):
+            print(f"{ad}: hedefe {degerler['gecis_m']} m | max rota sapmasi "
+                  f"{degerler['max_sapma_m']} m | yerde bekleme "
+                  f"{degerler['yerde_bekleme_s']} s | havada loiter "
+                  f"{degerler['loiter_s']:.0f} s ({degerler['loiter_sayisi']} kez)")
+        toplam_loiter = sum(d["loiter_s"] for d in gunluk.values())
+        toplam_yerde = sum(d["yerde_bekleme_s"] or 0.0 for d in gunluk.values())
+        # Madde 8: havada bekleme en az olmali. Yerde bekleme bedava,
+        # havadaki loiter degil; oran ikisinin dengesini gosterir.
+        print(f"toplam bekleme: yerde {toplam_yerde:.0f} s | havada {toplam_loiter:.0f} s")
+
+    sonuc = report.get("kabul") or {}
+    if sonuc:
+        print(f"KABUL: {'GECTI' if sonuc['gecti'] else 'KALDI'}")
+        for neden in sonuc["nedenler"]:
+            print(f"  - {neden}")
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Gorev kosusu varis analizi")
     parser.add_argument("--timeout", type=float, default=1200.0)
     parser.add_argument("--domain", type=int, default=10)
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument(
+        "--log", type=Path, default=None,
+        help="agents.log yolu; 5 m varis, rota sapmasi ve bekleme sureleri "
+             "yalnizca gunlukten okunabiliyor",
+    )
     args = parser.parse_args()
 
     collector = RunCollector()
@@ -143,13 +248,16 @@ def main() -> int:
     rclpy.shutdown()
 
     report = build_report(collector)
+    if args.log is not None and args.log.exists():
+        report["gunluk"] = parse_log(args.log)
+    report["kabul"] = evaluate(report)
     print_report(report)
 
     if args.output is not None:
         args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"rapor yazildi: {args.output}")
 
-    return 0 if collector.all_arrived else 1
+    return 0 if report["kabul"]["gecti"] else 1
 
 
 if __name__ == "__main__":
