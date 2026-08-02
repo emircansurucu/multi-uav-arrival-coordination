@@ -61,9 +61,14 @@ MIN_LOITER_DISTANCE_M = 2500.0
 LOITER_TRIGGER_S = 8.0
 # Anlik ETA sicramalari loiter baslatmasin diye ardisik tick dogrulamasi.
 LOITER_CONFIRM_TICKS = 40
-# Loiter'dan cikis esigi. Girisden kucuk tutulur ki cikar cikmaz tekrar
-# girilmesin (histerezis).
-LOITER_EXIT_S = 1.0
+# Loiter'dan cikarken kasitli olarak fazla donulur: hedef "erkenligi
+# sifirlamak" degil, asgari hava hizinda birkac saniye GEC kalmaktir.
+# Olculen asimetri: arac gec kalirsa duzeltebilir (13 -> 28 m/s hizlanma
+# yetkisi var), erken kalirsa duzeltemez (zaten asgaride). Tam olcusunde
+# cikildiginda hata duzeltilemez tarafta kaliyordu: gusty senaryosunda
+# HA-2 "kalan erkenlik 1.0 s" ile cikip 74 saniyede 32 saniye erkenlesti
+# ve 2500 m esigini gectigi icin bir daha daire cizemedi.
+LOITER_RECOVERY_MARGIN_S = 3.0
 # Capa bu esikten az kaydiginda log uretilmez.
 ANCHOR_LOG_THRESHOLD_S = 1.0
 # S-manevrasi yalnizca hiz yetkisi tukendiginde devreye girer: arac
@@ -212,7 +217,6 @@ class MissionManager:
         self._trigger_streak = 0
         self._loitering = False
         self._loiter_streak = 0
-        self._loiter_entry_eta_s = 0.0
         self._wind_filter = WindFilter()
         self._last_wind_sample_ns = 0
         # Yalnizca filtre oturduktan sonra doldurulur; oturmamis kestirim
@@ -512,24 +516,16 @@ class MissionManager:
         if not self._config.loiter_enabled or self._guided is None:
             return False
 
+        excess_s = self._loiter_excess_s(position)
+
         if self._loitering:
-            if self._loiter_remaining_early_s() <= LOITER_EXIT_S:
-                self._exit_loiter()
+            if excess_s <= -LOITER_RECOVERY_MARGIN_S:
+                self._exit_loiter(excess_s)
                 return False
             return True
 
         distance_m = geodesic_distance_m(position, self._config.target)
-        early_s = self._timing_error_s()
-        at_min_airspeed = math.isclose(
-            self._controller.commanded_airspeed_mps,
-            self._config.min_airspeed_mps,
-            abs_tol=0.2,
-        )
-        if (
-            early_s > -LOITER_TRIGGER_S
-            or not at_min_airspeed
-            or distance_m < MIN_LOITER_DISTANCE_M
-        ):
+        if excess_s < LOITER_TRIGGER_S or distance_m < MIN_LOITER_DISTANCE_M:
             self._loiter_streak = 0
             return False
 
@@ -537,10 +533,34 @@ class MissionManager:
         if self._loiter_streak < LOITER_CONFIRM_TICKS:
             return False
 
-        self._enter_loiter(position, early_s, distance_m)
+        self._enter_loiter(position, excess_s, distance_m)
         return True
 
-    def _enter_loiter(self, position: LatLon, early_s: float, distance_m: float) -> None:
+    def _loiter_excess_s(self, position: LatLon) -> float:
+        """Asgari hava hiziyla ucsa bile ne kadar erken varacagi.
+
+        Pozitif deger, hiz yetkisi tumuyle kullanilsa dahi kapatilamayan
+        erkenligi gosterir; loiter yalnizca bunun icin vardir.
+
+        Olculen zamanlama hatasi yerine bu ongorulu buyuklugun kullanilmasinin
+        nedeni: arac cember uzerinde nerede olursa olsun ayni cevabi verir ve
+        gercek ruzgari her bacak icin ayri hesaplar. Dondurulmus giris ETA'si
+        turbulansta iyimser cikiyordu.
+        """
+        now_ns = time.monotonic_ns()
+        if self._planned_arrival_ns <= 0:
+            return 0.0
+        wind = self._known_wind(now_ns) or WindEstimate(east_mps=0.0, north_mps=0.0)
+        slowest_s = route_duration_with_wind_s(
+            position,
+            self._config.route[self._active_wp_index:],
+            self._config.min_airspeed_mps,
+            wind,
+        )
+        remaining_s = (self._planned_arrival_ns - now_ns) / 1e9
+        return remaining_s - slowest_s
+
+    def _enter_loiter(self, position: LatLon, excess_s: float, distance_m: float) -> None:
         # Daire merkezi mevcut konumdur: arac rotanin uzerindeyken girdigi
         # icin cemberin rotaya uzakligi yaricap kadar kalir ve 500 m sinirinin
         # cok altindadir.
@@ -548,12 +568,10 @@ class MissionManager:
         self._guided.send(position, self._config.cruise_alt_msl_m)
         with self._lock:
             self._loitering = True
-            # Daire kapali oldugu icin arac ayni noktaya doner ve hedefe
-            # uzakligi degismez: giristeki ETA cikisa kadar gecerli kalir.
-            self._loiter_entry_eta_s = self._eta_s
         logger.info(
-            "LOITER BASLADI | %.1f s erken | hedefe %.0f m (sinir %.0f m)",
-            -early_s, distance_m, MIN_LOITER_DISTANCE_M,
+            "LOITER BASLADI | asgari hizda bile %.1f s erken | hedefe %.0f m "
+            "(sinir %.0f m)",
+            excess_s, distance_m, MIN_LOITER_DISTANCE_M,
         )
 
     def _model_eta_s(self, position: LatLon) -> float:
@@ -580,24 +598,14 @@ class MissionManager:
             wind,
         )
 
-    def _loiter_remaining_early_s(self) -> float:
-        """Daire cizerken kapatilmasi kalan erkenlik.
-
-        Canli ETA kullanilamaz: daire cizerken rota dogrultusundaki ilerleme
-        cokuyor, ETA siisiyor ve zamanlama hatasi gercekte zaman kazanilmadan
-        kapanmis gorunuyor (olculen: 16.5 s erken girilip 4 s sonra cikildi).
-        Giristeki ETA sabit tutulur; erkenlik yalnizca gecen sureyle kapanir.
-        """
-        remaining_s = (self._planned_arrival_ns - time.monotonic_ns()) / 1e9
-        return remaining_s - self._loiter_entry_eta_s
-
-    def _exit_loiter(self) -> None:
-        kalan_s = self._loiter_remaining_early_s()
+    def _exit_loiter(self, excess_s: float) -> None:
         self._commander.set_mode("AUTO")
         with self._lock:
             self._loitering = False
             self._loiter_streak = 0
-        logger.info("LOITER BITTI | kalan erkenlik %.1f s", kalan_s)
+        # Negatif deger istenen sonuctur: asgari hizda gec kalmak, hizlanarak
+        # kapatilabilir bir hatadir.
+        logger.info("LOITER BITTI | asgari hizda %.1f s gec", -excess_s)
 
     def _on_terminal(self) -> None:
         position = self._track_arrival()

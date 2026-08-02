@@ -1045,8 +1045,23 @@ def test_yetki_tukendiginde_loiter_baslar():
 
 
 def test_hiz_yetkisi_varken_loiter_yapilmaz():
-    manager, commander, _, guided = cruise_manager(early_s=30.0)
-    manager._controller._commanded_mps = 22.0
+    """Yavaslayarak kapatilabilen erkenlik icin daire cizilmemeli.
+
+    Loiter yalnizca asgari hava hizinda bile kapanmayan erkenlik icindir;
+    madde 8 havada beklemeyi en aza indirmeyi istiyor.
+    """
+    import time as _time
+
+    manager, commander, telemetry, guided = cruise_manager(early_s=0.0)
+    # Seyir hizina gore 30 s erken, ama asgari hizda ucmak bunu fazlasiyla
+    # yutar: kalan rota asgari hizda cok daha uzun surer.
+    konum = telemetry.current.position
+    manager._controller._commanded_mps = manager._config.nominal_cruise_speed_mps
+    plan_ns = _time.monotonic_ns() + int(
+        (manager._model_eta_s(konum) + 30.0) * SECOND_NS
+    )
+    manager._planned_arrival_ns = plan_ns
+    manager._nominal_plan_ns = plan_ns
 
     drive_trigger(manager)
 
@@ -1080,17 +1095,21 @@ def test_loiter_kapaliyken_tetiklenmez():
     assert "GUIDED" not in commander.modes
 
 
-def test_zamanlama_kapaninca_loiterdan_cikilir():
-    """Cikis kapali cevrim: erkenlik kapaninca AUTO'ya donulmeli."""
-    import time as _time
+def test_asgari_hizda_gec_kalinca_loiterdan_cikilir():
+    """Cikis, erkenlik sifirlaninca degil, asgari hizda GEC kalinca verilmeli.
 
-    manager, commander, _, _ = cruise_manager(early_s=30.0)
+    Tam olcusunde cikmak hatayi duzeltilemez tarafta birakiyordu: arac zaten
+    asgari hizdayken erken kalirsa yavaslayacak yeri yok. Gec kalmak ise
+    hizlanarak kapatilabilir.
+    """
+    manager, commander, telemetry, _ = cruise_manager(early_s=30.0)
     drive_trigger(manager)
     assert manager._loitering is True
 
-    # Daire cizerken sure gecti ve erkenlik kapandi. Nominal plan da
-    # guncellenmeli, aksi halde capa plani geri yazar.
-    plan_ns = _time.monotonic_ns() + int(manager._loiter_entry_eta_s * SECOND_NS)
+    # Daire cizerken sure gecti: artik asgari hizda 5 saniye gec kalinacak.
+    # Nominal plan da guncellenmeli, aksi halde capa plani geri yazar.
+    fazla_s = manager._loiter_excess_s(telemetry.current.position)
+    plan_ns = manager._planned_arrival_ns - int((fazla_s + 5.0) * SECOND_NS)
     manager._planned_arrival_ns = plan_ns
     manager._nominal_plan_ns = plan_ns
     manager.step()
