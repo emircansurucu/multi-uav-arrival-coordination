@@ -11,10 +11,6 @@ import pytest
 from oasy_uav_agent.config_model import VehicleConfig
 from oasy_uav_agent.estimation.geodesy import LatLon, geodesic_distance_m
 from oasy_uav_agent.estimation.wind_estimator import WIND_SETTLE_AFTER_S
-from oasy_uav_agent.autopilot_adapter.mission_builder import (
-    S_SLOT_COUNT,
-    spare_slot_range,
-)
 from oasy_uav_agent.mission_manager import (
     GATE_LATE_MARGIN_S,
     TERMINAL_RADIUS_M,
@@ -48,7 +44,6 @@ def make_config(vehicle_id: int = 1) -> VehicleConfig:
         max_airspeed_mps=28.0,
         airspeed_rate_limit_mps2=0.5,
         timing_deadband_s=0.5,
-        s_maneuver_enabled=True,
         loiter_enabled=True,
         status_publish_hz=5.0,
         peer_stale_after_s=2.0,
@@ -129,8 +124,6 @@ class FakeCommander:
         self.uploaded = None
         self.armed = False
         self.airspeed_commands = []
-        self.slot_writes = []
-        self.slot_write_ok = True
 
     def connect(self):
         self.connected = True
@@ -157,10 +150,6 @@ class FakeCommander:
 
     def set_airspeed(self, airspeed_mps):
         self.airspeed_commands.append(airspeed_mps)
-
-    def write_mission_slots(self, start_index, items):
-        self.slot_writes.append((start_index, list(items)))
-        return self.slot_write_ok
 
 
 def make_manager(vehicle_id: int = 1, peer_commitments=None):
@@ -369,6 +358,57 @@ def reach_cruise(manager, telemetry):
     telemetry.set(HOME, 400.0, 2 * SECOND_NS)
     advance_to(manager, telemetry, MissionState.CRUISE)
 
+def terminal_manager(early_s: float, oran: float = 0.10):
+    """Terminal fazda, son bacaga girmeden, erken ve minimum hizda arac kurar.
+
+    oran son bacaktan onceki bacak uzerindeki konumu belirler: 0 son
+    waypoint'te, buyudukce geriye gider. Terminal yaricapi 2000 m oldugu
+    icin kucuk tutulur.
+    """
+    import time as _time
+
+    telemetry = FakeTelemetry()
+    commander = FakeCommander()
+    guided = FakeGuided()
+    manager = MissionManager(
+        make_config(1), commander, telemetry,
+        peer_commitments=lambda _ns: {}, peer_feasible_arrivals=lambda _ns: {},
+        guided_commander=guided,
+    )
+    original_config = manager._config
+    manager._config = dataclasses.replace(original_config, loiter_enabled=False)
+    reach_cruise(manager, telemetry)
+    # Aktif waypoint'in dogru bacaga gelmesi icin rotayi sirayla gec; aksi
+    # halde rota sapmasi yanlis bacaga gore olculur.
+    for index, waypoint in enumerate(ROUTE[:-2]):
+        telemetry.set(waypoint, 400.0, (10 + index) * SECOND_NS)
+        manager.step()
+
+    onceki = ROUTE[-3] if len(ROUTE) >= 3 else HOME
+    yakin = LatLon(
+        ROUTE[-2].lat + oran * (onceki.lat - ROUTE[-2].lat),
+        ROUTE[-2].lon + oran * (onceki.lon - ROUTE[-2].lon),
+    )
+    telemetry.set(yakin, 400.0, 20 * SECOND_NS)
+    manager.step()
+
+    # Hiz yetkisi tukenmis: minimum hava hizinda ve erken. Nominal plan da
+    # guncellenmeli, aksi halde capa mantigi plani geri yazar.
+    manager._controller._commanded_mps = 15.0
+    # ETA komut edilen hava hizindan turetildigi icin plan, hiz
+    # ayarlandiktan sonra ve ayni modelden kurulmali.
+    eta_s = manager._model_eta_s(yakin)
+    plan_ns = _time.monotonic_ns() + int((eta_s + early_s) * SECOND_NS)
+    manager._planned_arrival_ns = plan_ns
+    manager._nominal_plan_ns = plan_ns
+    return manager, commander, telemetry, guided
+
+
+def drive_trigger(manager, ticks=45):
+    """Tetikleyici gurultuye basmasin diye ardisik dogrulama istiyor."""
+    for _ in range(ticks):
+        manager.step()
+
 
 def test_varan_arac_gercek_varis_anini_yayinlar():
     """Varan arac capaya olgu ile katilmali: vardigi an.
@@ -561,157 +601,6 @@ def test_ulasilamayan_peer_plani_ileri_kaydirir():
     assert plan > nominal
     beklenen = yavas_peer[2] - 20 * SECOND_NS
     assert plan == pytest.approx(beklenen, abs=SECOND_NS)
-
-
-
-def terminal_manager(early_s: float, oran: float = 0.10):
-    """Terminal fazda, son bacaga GIRMEDEN, erken ve minimum hizda arac kurar.
-
-    Manevra yuvalari son bacakta durdugu ve otopilot gitmekte oldugu noktayi
-    onbellege aldigi icin karar bir onceki bacakta verilmeli. oran bu bacak
-    uzerindeki konumu belirler: 0 son waypoint'te, buyudukce geriye gider.
-    Terminal yaricapi 2000 m oldugundan oran kucuk tutulur.
-    """
-    import time as _time
-
-    telemetry = FakeTelemetry()
-    commander = FakeCommander()
-    guided = FakeGuided()
-    manager = MissionManager(
-        make_config(1), commander, telemetry,
-        peer_commitments=lambda _ns: {}, peer_feasible_arrivals=lambda _ns: {},
-        guided_commander=guided,
-    )
-    original_config = manager._config
-    manager._config = dataclasses.replace(original_config, loiter_enabled=False)
-    reach_cruise(manager, telemetry)
-    # Aktif waypoint'in son bacaga gelmesi icin rotayi sirayla gec; aksi
-    # halde rota sapmasi yanlis bacaga gore olculur.
-    for index, waypoint in enumerate(ROUTE[:-2]):
-        telemetry.set(waypoint, 400.0, (10 + index) * SECOND_NS)
-        manager.step()
-
-    # Yuvalar son bacakta duruyor ve otopilot gitmekte oldugu noktayi
-    # onbellege aldigi icin karar bir ONCEKI bacakta verilmeli. Arac bu
-    # yuzden ROUTE[-3] -> ROUTE[-2] bacagina yerlestirilir.
-    onceki = ROUTE[-3] if len(ROUTE) >= 3 else HOME
-    yakin = LatLon(
-        ROUTE[-2].lat + oran * (onceki.lat - ROUTE[-2].lat),
-        ROUTE[-2].lon + oran * (onceki.lon - ROUTE[-2].lon),
-    )
-    telemetry.set(yakin, 400.0, 20 * SECOND_NS)
-    manager.step()
-
-    # Hiz yetkisi tukenmis: minimum hava hizinda ve erken.
-    # Nominal plan da guncellenmeli, aksi halde capa mantigi plani geri yazar.
-    manager._controller._commanded_mps = 15.0
-    # ETA komut edilen hava hizindan turetildigi icin plan, hiz
-    # ayarlandiktan sonra ve ayni modelden kurulmali.
-    eta_s = manager._model_eta_s(yakin)
-    plan_ns = _time.monotonic_ns() + int((eta_s + early_s) * SECOND_NS)
-    manager._planned_arrival_ns = plan_ns
-    manager._nominal_plan_ns = plan_ns
-    return manager, commander, telemetry, guided
-
-
-def test_hiz_yetkisi_varken_manevra_planlanmaz():
-    manager, commander, _, _ = terminal_manager(early_s=30.0)
-    # Kontrolcu minimumda degil: hala yavaslayabilir.
-    manager._controller._commanded_mps = 22.0
-    manager.step()
-    assert commander.slot_writes == []
-
-
-def drive_trigger(manager, ticks=45):
-    """Tetikleyici gurultuye basmasin diye ardisik dogrulama istiyor."""
-    for _ in range(ticks):
-        manager.step()
-
-
-def test_yetki_tukendiginde_s_manevrasi_baslar():
-    """Manevra gorev yuvalarina yazilir; GUIDED'a hic gecilmez.
-
-    GUIDED yol takibi yapmaz (ModeGuided::navigate -> update_loiter,
-    set_guided_WP crosstrack'i kapatir); iki ucus denemesinde de arac
-    noktalarda takilmisti.
-    """
-    manager, commander, _, _ = terminal_manager(early_s=30.0)
-    drive_trigger(manager)
-    assert commander.slot_writes, "gorev yuvalari yazilmadi"
-    assert "GUIDED" not in commander.modes
-
-
-def test_yuvalara_hedefin_kendisi_yazilmaz():
-    """Hedef ogesi dar yaricapiyla korunmali; yuvalar onun oncesindedir."""
-    manager, commander, _, _ = terminal_manager(early_s=30.0)
-    drive_trigger(manager)
-    assert commander.slot_writes
-    _, items = commander.slot_writes[-1]
-    for item in items:
-        assert geodesic_distance_m(LatLon(item.lat, item.lon), TARGET) > 1.0
-
-
-def test_manevra_bir_kez_denenir():
-    manager, commander, telemetry, _ = terminal_manager(early_s=30.0)
-    drive_trigger(manager)
-    guided_sayisi = commander.modes.count("GUIDED")
-    for _ in range(5):
-        manager.step()
-    assert commander.modes.count("GUIDED") == guided_sayisi
-
-
-def test_manevra_bitince_auto_ya_donulur():
-    manager, commander, telemetry, guided = terminal_manager(early_s=30.0)
-    drive_trigger(manager)
-    assert manager._maneuver_path
-
-    # Her ara noktaya ulasilmis gibi ilerlet.
-    for step, waypoint in enumerate(list(manager._maneuver_path)):
-        telemetry.set(waypoint, 400.0, (30 + step) * SECOND_NS)
-        manager.step()
-
-    assert manager._maneuver_path == ()
-    assert commander.modes[-1] == "AUTO"
-
-
-def test_s_manevrasi_kapaliyken_tetiklenmez():
-    """Konfigurasyon kapaliysa yetki tukense bile GUIDED'a gecilmez."""
-    import time as _time
-    from dataclasses import replace
-
-    telemetry = FakeTelemetry()
-    commander = FakeCommander()
-    guided = FakeGuided()
-    # Kapi loiteri de GUIDED kullanir; testin olcmek istedigi tek GUIDED
-    # kaynagi S-manevrasi kalsin diye kapi da kapatilir.
-    kapali = replace(make_config(1), s_maneuver_enabled=False, loiter_enabled=False)
-    manager = MissionManager(
-        kapali, commander, telemetry,
-        peer_commitments=lambda _ns: {}, peer_feasible_arrivals=lambda _ns: {},
-        guided_commander=guided,
-    )
-    reach_cruise(manager, telemetry)
-    for index, waypoint in enumerate(ROUTE[:-1]):
-        telemetry.set(waypoint, 400.0, (10 + index) * SECOND_NS)
-        manager.step()
-
-    onceki = ROUTE[-2]
-    yakin = LatLon(
-        TARGET.lat + 0.68 * (onceki.lat - TARGET.lat),
-        TARGET.lon + 0.68 * (onceki.lon - TARGET.lon),
-    )
-    telemetry.set(yakin, 400.0, 20 * SECOND_NS)
-    manager.step()
-
-    manager._controller._commanded_mps = 15.0
-    plan_ns = _time.monotonic_ns() + int((manager._eta_s + 30.0) * SECOND_NS)
-    manager._planned_arrival_ns = plan_ns
-    manager._nominal_plan_ns = plan_ns
-
-    for _ in range(45):
-        manager.step()
-    assert "GUIDED" not in commander.modes
-    assert guided.sent == []
 
 
 def test_yerdeki_arac_peer_ruzgarina_gore_sureyi_duzeltir():
@@ -960,57 +849,6 @@ def test_yayinlanan_plan_capa_kaymasini_tasimaz():
     assert durum.committed_plan_monotonic_ns == manager._nominal_plan_ns
 
 
-def test_manevra_sirasinda_ulasilabilirlik_dondurulur():
-    """Manevra ilerlemeyi dusurur; ulasilabilirlik bundan etkilenmemeli.
-
-    Aksi halde capa geriye kayar, daha fazla yedirme gerekir ve manevra
-    kendini besler.
-    """
-    manager, _, telemetry, _ = terminal_manager(early_s=30.0)
-    drive_trigger(manager)
-    assert manager._maneuver_path, "manevra baslamadi"
-
-    dondurulan = manager.snapshot().earliest_feasible_arrival_monotonic_ns
-    # Ilerleme cokse bile ulasilabilirlik degismemeli.
-    manager._progress_speed_mps = 1.0
-    for _ in range(5):
-        manager.step()
-    assert manager.snapshot().earliest_feasible_arrival_monotonic_ns == dondurulan
-
-
-def test_anlik_eta_sicramasi_manevra_tetiklemez():
-    """Donuslerde -274 s gibi gecici degerler goruldu; tek ornek yetmemeli.
-
-    Kosul dogrulama suresi dolmadan ortadan kalkarsa sayac sifirlanmali.
-    """
-    manager, commander, telemetry, guided = terminal_manager(early_s=300.0)
-
-    # Dogrulama esiginin altinda kalacak kadar adim: henuz tetiklenmemeli.
-    for _ in range(20):
-        manager.step()
-    assert "GUIDED" not in commander.modes
-    assert manager._trigger_streak > 0
-
-    # Sicrama gecti: arac artik minimum hizda degil, kosul bozuldu.
-    manager._controller._commanded_mps = 22.0
-    manager.step()
-    assert manager._trigger_streak == 0, "sayac sifirlanmadi"
-
-    for _ in range(20):
-        manager.step()
-    assert "GUIDED" not in commander.modes, "gecici sicrama manevra tetikledi"
-
-
-def test_manevra_plan_sinirlari_ucus_marji_birakir():
-    """Ucusta pursuit tasmasi oluyor; plan siniri 500 m'den dar olmali."""
-    from oasy_uav_agent.control.maneuver_planner import MAX_LATERAL_OFFSET_M
-    from oasy_uav_agent.mission_manager import MANEUVER_PLAN_LATERAL_LIMIT_M
-
-    assert MANEUVER_PLAN_LATERAL_LIMIT_M < MAX_LATERAL_OFFSET_M
-    # Olculen tasma orani ~1.6; plan siniri bunu 500 m altinda tutmali.
-    assert MANEUVER_PLAN_LATERAL_LIMIT_M * 1.6 <= MAX_LATERAL_OFFSET_M
-
-
 def nokta_hedefe_uzaklikta(baslangic, bitis, hedef_mesafe_m):
     """baslangic->bitis bacagi uzerinde, hedefe verilen uzaklikta nokta."""
     dusuk, yuksek = 0.0, 1.0
@@ -1037,7 +875,7 @@ def gate_manager(early_at_gate_s: float = 30.0, hedefe_mesafe_m: float = 2800.0)
     guided = FakeGuided()
     manager = MissionManager(
         dataclasses.replace(
-            make_config(1), min_airspeed_mps=13.0, s_maneuver_enabled=False
+            make_config(1), min_airspeed_mps=13.0
         ),
         commander,
         telemetry,
@@ -1243,53 +1081,6 @@ def test_loiter_sirasinda_aktif_ulasilabilirlik_dondurulur():
     assert manager.snapshot().earliest_feasible_arrival_monotonic_ns == dondurulan
 
 
-
-def test_manevra_son_bacaga_hapsedilir():
-    """Yorunge son bacagi izlemeli ve 500 m sapma sinirinda kalmali.
-
-    Yuvalar yalnizca son bacakta durdugu icin manevra oraya sigmali; duz
-    cizgi cekmek waypoint atlar ve sapma manevradan degil rotanin
-    kesilmesinden gelirdi (olculen 91 m plan -> 812 m ucus).
-    """
-    from oasy_uav_agent.control.maneuver_planner import distance_to_polyline_m
-
-    manager, commander, _, _ = terminal_manager(early_s=30.0)
-    drive_trigger(manager)
-    assert manager._maneuver_path
-
-    son_bacak = (ROUTE[-2], ROUTE[-1])
-    assert geodesic_distance_m(manager._maneuver_path[0], ROUTE[-2]) < 1.0
-    assert geodesic_distance_m(manager._maneuver_path[-1], TARGET) < 1.0
-    en_buyuk = max(
-        distance_to_polyline_m(nokta, son_bacak) for nokta in manager._maneuver_path
-    )
-    assert en_buyuk <= 500.0, f"planlanan sapma {en_buyuk:.0f} m"
-
-
-def test_sigmayan_talepte_manevra_fazla_gecikme_uretmez():
-    """Arama eksik teslime yanli olmali; fazla gecikmenin geri donusu yok.
-
-    Olculen: mesafeden boyutlandirmak ruzgar altinda bozuluyordu. S'in bir
-    bacagi ruzgara donunce yer hizi 3.5 m/s'ye dustu, beklenen 11 s'lik
-    gecikme 77 s oldu ve varis sirasi bozuldu. Karsilanamayan bir talepte
-    elden gelenin yapilmasi dogru, fazlasinin yapilmasi degil.
-    """
-    from oasy_uav_agent.control.maneuver_planner import distance_to_polyline_m
-
-    manager, commander, _, _ = terminal_manager(early_s=600.0)
-
-    drive_trigger(manager)
-
-    assert "GUIDED" not in commander.modes
-    if manager._maneuver_path:
-        son_bacak = (ROUTE[-2], ROUTE[-1])
-        sapma = max(
-            distance_to_polyline_m(nokta, son_bacak)
-            for nokta in manager._maneuver_path
-        )
-        assert sapma <= 500.0, f"sapma {sapma:.0f} m"
-
-
 def test_saglam_pencere_dogru_siralanir():
     """E ve L ayni operasyonel zarf modelinden sonlu uretilmeli."""
     manager, _, telemetry = make_manager(vehicle_id=1)
@@ -1334,7 +1125,6 @@ def test_ha3_kapisi_duz_mesafeye_degil_kalan_rota_suffixine_baglidir():
             home=ha3_home,
             route=ha3_route,
             min_airspeed_mps=13.0,
-            s_maneuver_enabled=False,
         ),
         FakeCommander(), telemetry, guided_commander=FakeGuided(),
     )
@@ -1447,107 +1237,3 @@ def test_hiz_yetkisi_varken_loiter_yapilmaz():
 
     assert "GUIDED" not in commander.modes
     assert guided.sent == []
-
-
-
-
-
-
-def son_bacakta_manevrali_arac(early_s: float, oran: float = 0.25):
-    """Son bacakta, yuvalari yazilmis ve verilen kadar erken bir arac kurar.
-
-    Surekli guncellemenin sinandigi durum budur: karar ani gecmis, arac
-    bacagin icinde ve erkenlik yeni dogmus.
-    """
-    import time as _time
-
-    manager, commander, telemetry, _ = terminal_manager(early_s=30.0)
-    drive_trigger(manager)
-    assert commander.slot_writes, "ilk yazma olmadan guncelleme sinanamaz"
-    commander.slot_writes.clear()
-
-    # Arac son bacaga girdi: aktif waypoint hedef, konum bacagin basinda.
-    konum = LatLon(
-        ROUTE[-2].lat + oran * (TARGET.lat - ROUTE[-2].lat),
-        ROUTE[-2].lon + oran * (TARGET.lon - ROUTE[-2].lon),
-    )
-    telemetry.set(konum, 400.0, 40 * SECOND_NS)
-    manager.step()
-
-    manager._controller._commanded_mps = 15.0
-    eta_s = manager._model_eta_s(konum)
-    plan_ns = _time.monotonic_ns() + int((eta_s + early_s) * SECOND_NS)
-    manager._planned_arrival_ns = plan_ns
-    manager._nominal_plan_ns = plan_ns
-    manager._next_slot_write = 0.0
-    # Kurulum adimlarindaki yazmalar teste sizmasin; olculecek olan yalnizca
-    # testin kendi adiminda olandir.
-    commander.slot_writes.clear()
-    return manager, commander, telemetry
-
-
-def test_son_bacakta_dogan_erkenlik_icin_yuvalar_guncellenir():
-    """Basarisizliklarin sebebi buydu: erkenlik karar aninda henuz yoktu.
-
-    Olculdu: uc basarisiz kosuda da arac son bacaga girerken zamanindaydi
-    (-0.4 / -0.3 / -8.0 s) ve seyir hizindaydi; erkenligin tamami bacak
-    icinde, ruzgar donunce dogdu.
-    """
-    manager, commander, _ = son_bacakta_manevrali_arac(early_s=25.0)
-
-    manager.step()
-
-    assert commander.slot_writes, "ilerideki yuvalar guncellenmedi"
-
-
-def test_aracin_gectigi_yuvalar_yazilmaz():
-    """Otopilot gitmekte oldugu noktayi onbellege alir; geride kalan yuvaya
-    yazmak etkisiz kalir ve gorev deposunu bosuna yorar."""
-    manager, commander, _ = son_bacakta_manevrali_arac(early_s=25.0, oran=0.25)
-    ilk_yuva, _ = spare_slot_range(ROUTE)
-
-    manager.step()
-
-    assert commander.slot_writes
-    baslangic, items = commander.slot_writes[-1]
-    # Yazma bacagin ilerisinden baslamali, ilk yuvadan degil.
-    assert baslangic > ilk_yuva
-    assert baslangic + len(items) - 1 <= ilk_yuva + S_SLOT_COUNT - 1
-
-
-def test_erkenlik_kucukse_yuvalar_yazilmaz():
-    """Olu bant: her tick yazmak MAVLink trafigini bosuna yorar."""
-    manager, commander, _ = son_bacakta_manevrali_arac(early_s=0.5)
-
-    manager.step()
-
-    assert commander.slot_writes == []
-
-
-def test_yuva_guncellemesi_hiz_sinirlidir():
-    manager, commander, _ = son_bacakta_manevrali_arac(early_s=25.0)
-
-    manager.step()
-    yazma_sayisi = len(commander.slot_writes)
-    assert yazma_sayisi >= 1
-    for _ in range(20):
-        manager.step()
-
-    assert len(commander.slot_writes) == yazma_sayisi, "hiz siniri uygulanmadi"
-
-
-def test_yuva_konumlari_gorev_yuklenince_bilinir():
-    """Surekli guncelleme tek seferlik yazmayi beklememelidir.
-
-    Yuvalar gorevde kalkistan beri var. Konumlari yalnizca tek seferlik
-    yazmadan alinirsa, o yazma tetiklenmedigi surece guncelleme hic
-    calisamaz. Olculdu: bir kosu boyunca mekanizma bu yuzden atil kaldi,
-    arac karar aninda zamanindaydi ve tetikleyici hic saymadi.
-    """
-    manager, _, telemetry = make_manager()
-    telemetry.set(HOME, 0.0, SECOND_NS)
-    advance_to(manager, telemetry, MissionState.WAIT_PEERS)
-
-    assert len(manager._slot_positions) == S_SLOT_COUNT
-    for slot in manager._slot_positions:
-        assert geodesic_distance_m(slot, TARGET) > 1.0

@@ -17,16 +17,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import Callable, Dict, Optional, Tuple
 
-from pymavlink import mavutil
-
-from .autopilot_adapter.mavlink_link import MissionItem
-from .autopilot_adapter.mission_builder import (
-    S_SLOT_ACCEPT_RADIUS_M,
-    S_SLOT_COUNT,
-    build_mission,
-    point_along_leg,
-    spare_slot_range,
-)
+from .autopilot_adapter.mission_builder import build_mission
 from .config_model import VehicleConfig
 from .coordination.arrival_schedule import (
     NANOSECONDS_PER_SECOND,
@@ -37,11 +28,6 @@ from .coordination.arrival_schedule import (
     target_arrival,
 )
 from .control.arrival_controller import ArrivalController
-from .control.maneuver_planner import (
-    follow_path,
-    plan_s_maneuver,
-    turn_radius_m,
-)
 from .estimation.arrival_detector import ArrivalDetector
 from .estimation.eta_estimator import EtaEstimator, route_length_m
 from .estimation.wind_estimator import (
@@ -57,7 +43,6 @@ from .estimation.geodesy import (
     cross_track_distance_m,
     geodesic_distance_m,
     last_circle_entry_on_route,
-    to_local_xy,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,11 +53,11 @@ LATE_TAKEOFF_TOLERANCE_S = 1.0
 # Hedefin 2 km cevresi dokumanda loiter yasagi olan kritik bolge; terminal
 # faza gecis bu sinirdan baslar.
 TERMINAL_RADIUS_M = 2000.0
+# Dokuman madde 4: rotadan en fazla 500 m sapma. Bu sinir S-manevrasindan
+# bagimsizdir; her ucusta olculur ve asilirsa uyarilir.
+MAX_ROUTE_DEVIATION_M = 500.0
 ALTITUDE_REACHED_MARGIN_M = 15.0
 TELEMETRY_TIMEOUT_S = 3.0
-# Vaka dokumani madde 4: mesafe yedirme manevralarinda rotadan sapma en
-# fazla 500 m olabilir. Asilirsa uyari uretilir.
-MAX_ROUTE_DEVIATION_M = 500.0
 # Loiter, hedefe 2 km'den yakinda yasaktir (madde 6). Daire yaricapi
 # WP_LOITER_RAD kadar oldugu icin cemberin hicbir noktasi yasak bolgeye
 # girmemeli; ustune olcum ve cikis gecikmesi icin pay birakilir.
@@ -100,43 +85,6 @@ TERMINAL_RESERVE_HYSTERESIS_S = 2.0
 # Capa bu esikten az kaydiginda log uretilmez.
 GATE_LOG_INTERVAL_S = 10.0
 ANCHOR_LOG_THRESHOLD_S = 1.0
-# S-manevrasi yalnizca hiz yetkisi tukendiginde devreye girer: arac
-# minimum hava hizinda oldugu halde hala bu kadar erken variyorsa.
-S_MANEUVER_TRIGGER_S = 3.0
-# Tetikleyici anlik ETA sicramalarina basmamali: donuslerde ilerleme hizi
-# dustugu icin -274 s gibi gecici degerler goruldu ve bunlar geri donulemez
-# bir manevra planlatiyordu. Kosul bu kadar ardisik adim surmelidir.
-S_MANEUVER_CONFIRM_TICKS = 40
-# Planlanan yanal ofset ile ucular sapma ayni degil: pursuit gudumu zikzak
-# koselerinde tasiyor (olculen 497 m plan -> 816 m ucus). Dokumandaki 500 m
-# sinirinin ucusta da tutmasi icin plan bu daha dar sinirla yapilir.
-MANEUVER_PLAN_LATERAL_LIMIT_M = 280.0
-MANEUVER_BANK_ANGLE_DEG = 30.0
-# Yuvalar son bacak boyunca yeniden yazilabilir. Tek seferlik karar
-# basarisizliklari cozemiyordu: olculdu, uc basarisiz kosuda da arac son
-# bacaga GIRERKEN zamanindaydi (-0.4/-0.3/-8.0 s) ve seyir hizindaydi;
-# erkenligin tamami bacak icinde, ruzgar donunce dogdu. Karar aninda bilgi
-# henuz yok, dolayisiyla duzeltme surekli olmali.
-SLOT_UPDATE_INTERVAL_S = 5.0
-# Otopilot gitmekte oldugu noktayi next_WP_loc'ta onbellege alir; konumdan
-# turetilen tahminle arasinda pay birakilir. Bacak uzunlugunun orani.
-SLOT_WRITE_MARGIN_RATIO = 0.10
-# Bu esigin altindaki duzeltme icin yazmaya degmez; her tick yazmak MAVLink
-# trafigini ve gorev deposunu bosuna yorar.
-SLOT_UPDATE_DEADBAND_S = 1.5
-# Ek sureyi saglayan mesafeyi ikiye bolerek arar; 8 adim 1 s'nin altina iner.
-MANEUVER_SEARCH_ITERATIONS = 8
-# Takip noktasi mesafesi. SITL plane modelinde WP_LOITER_RAD 80 m; takip
-# noktasi bunun belirgin uzerinde tutulmazsa arac hedefi yakalayip cember
-# atmaya basliyor ve manevra hic ilerlemiyor.
-MANEUVER_LOOKAHEAD_M = 250.0
-MANEUVER_COMPLETION_M = 50.0
-# Manevra icin kalan rotanin en az bu kadar olmasi gerekir. Kisa mesafede
-# istenen ek yol, bacak uzunlugunun yanina yaklasir ve zikzak son anda buyuk
-# bir savrulmaya donusur: olculen kosuda 212 m kala 170 m ek mesafe istendi,
-# 159 m yanal ofsetle arac hedefi 66 m ile isakaladi (sinir 5 m). Boyle bir
-# durumda manevra etmemek etmekten iyidir.
-MIN_MANEUVER_ROUTE_M = 800.0
 # Ruzgar kestiriminin gecerli sayilmasi icin gereken en dusuk hava hizi;
 # yerde ve kalkis kosusunda olculen degerler anlamsizdir.
 MIN_WIND_ESTIMATE_AIRSPEED_MPS = 10.0
@@ -315,14 +263,6 @@ class MissionManager:
         # olculur, bir onceki kaymaya gore degil. Aksi halde her tick'teki
         # kucuk kaymalar birikip plani sonsuza kadar ileri itiyor.
         self._nominal_plan_ns = 0
-        self._maneuver_path: Tuple[LatLon, ...] = ()
-        self._maneuver_index = 0
-        self._maneuver_attempted = False
-        self._trigger_streak = 0
-        # Yuvalara en son yazilan konumlar; hangi yuvanin aracin onunde
-        # kaldigini bacak uzerindeki izdusumden hesaplamak icin saklanir.
-        self._slot_positions: Tuple[LatLon, ...] = ()
-        self._next_slot_write = 0.0
         self._loitering = False
         self._gate_crossed = self._hold_gate is None
         self._gate_hold_used = False
@@ -462,21 +402,8 @@ class MissionManager:
             self._config.cruise_alt_msl_m,
             self._config.takeoff_alt_msl_m,
             self._config.wp_accept_radius_m,
-            self._config.s_maneuver_enabled,
         )
         if self._commander.upload_mission(mission):
-            # Yuvalar gorevde zaten var (bacak dogrusu uzerinde). Konumlari
-            # buradan alinmazsa surekli guncelleme hic calisamaz: tek
-            # seferlik yazmayi bekler, o da arac karar aninda zamanindayken
-            # tetiklenmez. Olculdu, mekanizma bu yuzden bir kosu boyunca atil
-            # kaldi.
-            if self._config.s_maneuver_enabled:
-                first_slot, last_slot = spare_slot_range(self._config.route)
-                with self._lock:
-                    self._slot_positions = tuple(
-                        LatLon(item.lat, item.lon)
-                        for item in mission[first_slot:last_slot + 1]
-                    )
             self._transition(MissionState.WAIT_PEERS)
 
     def _known_wind(self, now_ns: int) -> Optional[WindEstimate]:
@@ -857,12 +784,7 @@ class MissionManager:
         # uctugu icin ETA da ondan hesaplanmali; aksi halde sistem kendi
         # ekledigi yolu gormez ve zamanlamayi yanlis degerlendirir.
         remaining = (
-            # segment_index mevcut segmentin BASLANGIC indeksidir. Onu tekrar
-            # eklemek aracin geriye gidip segmenti yeniden ucacagini varsayar
-            # ve ETA'yi sisirir; mevcut konumdan segment sonuna devam edilir.
-            self._maneuver_path[self._maneuver_index + 1:]
-            if self._maneuver_path
-            else self._config.route[self._active_wp_index:]
+            self._config.route[self._active_wp_index:]
         )
         return route_duration_with_wind_s(
             position, remaining, self._controller.commanded_airspeed_mps, wind
@@ -878,282 +800,6 @@ class MissionManager:
         if self._handle_hold_gate(position):
             return
         self._coordinate_and_regulate()
-
-        if self._maneuver_path:
-            self._fly_maneuver(position)
-        else:
-            self._consider_s_maneuver(position)
-        # Son bacaga girdikten sonra da ilerideki yuvalar guncellenebilir;
-        # bu, tek seferlik karari kapali cevrime cevirir.
-        self._update_maneuver_slots(position)
-
-    def _consider_s_maneuver(self, position: LatLon) -> None:
-        """Hiz yetkisi tukendiyse yorunge uzatma manevrasi planlar.
-
-        Dokuman hedefin 2 km cevresinde loiter'i yasakladigi icin terminal
-        fazda tek secenek S-manevrasidir.
-        """
-        if not self._config.s_maneuver_enabled:
-            return
-        if self._maneuver_attempted:
-            return
-        # Yuvalar son bacakta duruyor; arac o bacaga girdikten sonra yazmak
-        # etkisiz kalir cunku otopilot gitmekte oldugu noktayi next_WP_loc'ta
-        # onbellege alir. Karar bir onceki bacakta verilmeli.
-        if self._active_wp_index >= len(self._config.route) - 1:
-            return
-
-        early_s = self._timing_error_s()
-        at_min_airspeed = math.isclose(
-            self._controller.commanded_airspeed_mps, self._config.min_airspeed_mps, abs_tol=0.2
-        )
-        if early_s > -S_MANEUVER_TRIGGER_S or not at_min_airspeed:
-            self._trigger_streak = 0
-            return
-
-        self._trigger_streak += 1
-        if self._trigger_streak < S_MANEUVER_CONFIRM_TICKS:
-            return
-
-        if self._remaining_distance_m < MIN_MANEUVER_ROUTE_M:
-            # Tek sefer uyarilir; tekrar denemenin anlami yok.
-            self._maneuver_attempted = True
-            logger.warning(
-                "S-manevrasi atlandi: kalan rota %.0f m (en az %.0f m gerekli). "
-                "Erkenlik %.1f s bu mesafede kapatilamaz.",
-                self._remaining_distance_m, MIN_MANEUVER_ROUTE_M, -early_s,
-            )
-            return
-
-        self._maneuver_attempted = True
-        # Manevra son bacaga hapsedilir: yuvalar orada duruyor ve dokumanin
-        # loiter yasakladigi bolge de orasi. Bacak poligonu kullanilir, duz
-        # cizgi degil; aksi halde sapma manevradan degil rotanin kesilmesinden
-        # gelir (olculen: 91 m planlanan ofsete karsi 812 m gercek sapma).
-        # Donus yaricapi ASGARI hizdan hesaplanirsa arac o donusleri yapamaz ve
-        # daha genis yay cizer. Olculdu: 13 m/s varsayilip 28 m/s uculdugunda
-        # ek mesafe 407 m yerine 489 m, sapma 138 m yerine 165 m cikti.
-        found = self._maneuver_for_delay(
-            self._config.route[-2], self._config.route[-1], -early_s, S_SLOT_COUNT
-        )
-        if found is None:
-            logger.warning(
-                "S-manevrasi uretilemedi: %.1f s gecikme 500 m sapma ve donus "
-                "yaricapi kisitlari altinda saglanamiyor", -early_s,
-            )
-            return
-        maneuver, added_s = found
-
-        if not self._write_maneuver_slots(maneuver):
-            return
-
-        with self._lock:
-            self._maneuver_path = maneuver.waypoints
-            self._maneuver_index = 0
-
-        # Raporlanan degerler uretilen yorungeden olculmustur, istenen
-        # degerler degil; boylece 500 m denetimi ucusla ayni referansi kullanir.
-        logger.info(
-            "S-MANEVRASI BASLADI | kazanilan %.1f s (istenen %.1f) | %d dongu | "
-            "ek %.0f m | rota sapmasi %.0f m (sinir %.0f m)",
-            added_s, -early_s, maneuver.cycles,
-            maneuver.planned_extra_distance_m,
-            maneuver.max_route_deviation_m, MAX_ROUTE_DEVIATION_M,
-        )
-
-    def _maneuver_for_delay(
-        self, start: LatLon, end: LatLon, delay_s: float, max_cycles: int
-    ):
-        """Istenen ek SUREYI saglayan en buyuk guvenli manevrayi arar.
-
-        Ek mesafeden gitmek ruzgar altinda bozuluyor: S'in yanal bacaklari
-        farkli yonlere baktigi icin ayni mesafe cok farkli sureler tutar.
-        Olculdu: 242 m'lik ek yolun bir bacagi ruzgara donunce yer hizi
-        3.5 m/s'ye dustu, beklenen 11 s'lik gecikme 77 s oldu ve varis
-        sirasi bozuldu.
-
-        Arama bilerek EKSIK teslime yanlidir: kalan erkenligi hiz kontrolcusu
-        kismen kapatabilir, fazla gecikmenin ise geri donusu yoktur.
-        """
-        wind = self._known_wind(time.monotonic_ns()) or WindEstimate(0.0, 0.0)
-        airspeed_mps = self._controller.commanded_airspeed_mps
-        direct_s = route_duration_with_wind_s(start, (end,), airspeed_mps, wind)
-        radius_m = turn_radius_m(airspeed_mps, MANEUVER_BANK_ANGLE_DEG)
-
-        best = None
-        low_m = 0.0
-        high_m = delay_s * self._config.max_airspeed_mps
-        for _ in range(MANEUVER_SEARCH_ITERATIONS):
-            mid_m = 0.5 * (low_m + high_m)
-            candidate = plan_s_maneuver(
-                (start, end), mid_m, radius_m,
-                max_lateral_offset_m=MANEUVER_PLAN_LATERAL_LIMIT_M,
-                max_cycles=max_cycles,
-            )
-            if candidate is None:
-                high_m = mid_m
-                continue
-            added_s = route_duration_with_wind_s(
-                start, candidate.waypoints[1:], airspeed_mps, wind
-            ) - direct_s
-            if added_s <= delay_s:
-                best = (candidate, added_s)
-                low_m = mid_m
-            else:
-                high_m = mid_m
-        return best
-
-    def _leg_progress_fraction(self, position: LatLon) -> float:
-        """Aracin son bacak uzerindeki ilerleme orani (0 basta, 1 sonda)."""
-        leg_start, leg_end = self._config.route[-2], self._config.route[-1]
-        sx, sy = to_local_xy(leg_start, leg_start)
-        ex, ey = to_local_xy(leg_end, leg_start)
-        px, py = to_local_xy(position, leg_start)
-        dx, dy = ex - sx, ey - sy
-        length_sq = dx * dx + dy * dy
-        if length_sq <= 0.0:
-            return 1.0
-        return max(0.0, min(1.0, ((px - sx) * dx + (py - sy) * dy) / length_sq))
-
-    def _writable_slot_count(self, position: LatLon) -> int:
-        """Aracin henuz gecmedigi, guvenle yazilabilecek yuva sayisi."""
-        if not self._slot_positions:
-            return 0
-        limit = self._leg_progress_fraction(position) + SLOT_WRITE_MARGIN_RATIO
-        return sum(
-            1 for slot in self._slot_positions
-            if self._leg_progress_fraction(slot) > limit
-        )
-
-    def _update_maneuver_slots(self, position: LatLon) -> None:
-        """Son bacakta, ilerideki yuvalari guncel erkenlige gore yeniden yazar.
-
-        Tek seferlik karar yetmiyordu: erkenlik son bacak icinde, ruzgar
-        donunce doguyor ve karar aninda henuz yok. Otopilotun onbellege
-        aldigi ogeye dokunulmaz, yalnizca ilerideki yuvalar degistirilir.
-        """
-        if not self._config.s_maneuver_enabled or not self._slot_positions:
-            return
-        if self._active_wp_index < len(self._config.route) - 1:
-            return
-
-        now = time.monotonic()
-        if now < self._next_slot_write:
-            return
-
-        early_s = -self._timing_error_s()
-        if early_s <= SLOT_UPDATE_DEADBAND_S:
-            return
-        writable = self._writable_slot_count(position)
-        if writable <= 0:
-            return
-
-        leg_end = self._config.route[-1]
-        found = self._maneuver_for_delay(position, leg_end, early_s, writable)
-        self._next_slot_write = now + SLOT_UPDATE_INTERVAL_S
-        if found is None:
-            logger.warning(
-                "S guncellemesi uretilemedi: %.1f s erkenlik, kalan %d yuva",
-                early_s, writable,
-            )
-            return
-        maneuver, added_s = found
-
-        points = list(maneuver.waypoints[1:-1])[:writable]
-        if not points:
-            return
-        first_slot, _ = spare_slot_range(self._config.route)
-        start = first_slot + (S_SLOT_COUNT - writable)
-        if not self._write_slot_items(start, points):
-            return
-
-        with self._lock:
-            self._slot_positions = (
-                self._slot_positions[: S_SLOT_COUNT - writable] + tuple(points)
-            )
-            self._maneuver_path = maneuver.waypoints
-            self._maneuver_index = 0
-        logger.info(
-            "S YUVALARI GUNCELLENDI | %.1f s erkenlik | %d yuva | "
-            "kazanilan %.1f s | ek %.0f m | sapma %.0f m",
-            early_s, len(points), added_s, maneuver.planned_extra_distance_m,
-            maneuver.max_route_deviation_m,
-        )
-
-    def _write_maneuver_slots(self, maneuver) -> bool:
-        """S noktalarini son bacaktaki bos gorev yuvalarina yazar.
-
-        GUIDED kullanilmaz: ModeGuided::navigate update_loiter cagirir ve
-        set_guided_WP crosstrack'i kapatir, yani noktalar arasi yol takibi
-        yoktur. Iki denemede de arac noktalarda takilip zamanlamayi bozdu.
-        AUTO'da crosstrack acik oldugu icin L1 yorungeyi gercekten izler.
-        """
-        first_slot, _ = spare_slot_range(self._config.route)
-        points = list(maneuver.waypoints[1:-1])
-        if len(points) > S_SLOT_COUNT:
-            logger.warning(
-                "S-manevrasi atlandi: %d nokta %d yuvaya sigmiyor",
-                len(points), S_SLOT_COUNT,
-            )
-            return False
-        # Artan yuvalar hedefe yakin, bacak dogrusu uzerinde birakilir; oradan
-        # gecmek yorungeyi degistirmez. Oran 1.0'a ULASMAMALI: hedefin uzerine
-        # dusen bir yuva, hedefin dar kabul yaricapini 20 m'lik yuvayla
-        # golgeler ve arac 5 m'ye girmeden gorevi tamamlanmis sayar.
-        leg_start, leg_end = self._config.route[-2], self._config.route[-1]
-        bos = S_SLOT_COUNT - len(points)
-        for index in range(bos):
-            points.append(
-                point_along_leg(leg_start, leg_end, 0.90 + 0.05 * (index + 1) / bos)
-            )
-
-        if not self._write_slot_items(first_slot, points):
-            return False
-        with self._lock:
-            self._slot_positions = tuple(points)
-        return True
-
-    def _write_slot_items(self, start_index: int, points) -> bool:
-        """Verilen konumlari gorev yuvalarina yazar."""
-        items = [
-            MissionItem(
-                mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
-                point.lat, point.lon, self._config.cruise_alt_msl_m,
-                param2=S_SLOT_ACCEPT_RADIUS_M,
-            )
-            for point in points
-        ]
-        if not self._commander.write_mission_slots(start_index, items):
-            logger.error("S-manevrasi yuvalari yazilamadi")
-            return False
-        return True
-
-    def _fly_maneuver(self, position: LatLon) -> None:
-        """Manevra boyunca ilerlemeyi izler; komut vermez.
-
-        Yorungeyi otopilot AUTO gorevinden ucar. Buradaki takip yalnizca ETA
-        modeli icindir: kalan yol manevra poligonundan olculmezse kontrolcu
-        aracin gecikeecegini gorup hizlanir ve manevranin kazandirdigi zamani
-        geri harcar.
-        """
-        state = follow_path(
-            self._maneuver_path, position, MANEUVER_LOOKAHEAD_M, self._maneuver_index
-        )
-        if state is None:
-            self._finish_maneuver("takip noktasi hesaplanamadi")
-            return
-
-        with self._lock:
-            self._maneuver_index = state.segment_index
-
-        if state.remaining_to_end_m <= MANEUVER_COMPLETION_M:
-            self._finish_maneuver("yorunge tamamlandi")
-
-    def _finish_maneuver(self, reason: str) -> None:
-        """Izlemeyi birakir. Mod degismez: AUTO'dan hic cikilmadi."""
-        with self._lock:
-            self._maneuver_path = ()
-        logger.info("S-MANEVRASI BITTI | %s", reason)
 
     def _timing_error_s(self) -> float:
         """Pozitif deger gec kalindigini gosterir."""
@@ -1241,7 +887,7 @@ class MissionManager:
         # ulasilabilirligi cokertip capayi geriye itiyor, bu da daha fazla
         # manevra gerektiriyordu: pozitif geri besleme. Manevra boyunca son
         # temiz tahmin dondurulur.
-        if self._maneuver_path or self._loitering:
+        if self._loitering:
             return
 
         # Varistan sonra arac RTL'e gecip hedeften uzaklasir; "kalan rota"
@@ -1446,12 +1092,6 @@ class MissionManager:
         now_ns = time.monotonic_ns()
         if (now_ns - self._robust_bounds_ns) / NANOSECONDS_PER_SECOND < ROBUST_BOUNDS_INTERVAL_S:
             return
-        # S sirasinda nominal suffix gercek yolu temsil etmez. Loiter'da ise
-        # mutlak E/L zamanlari her saniye ileri gitmelidir; dondurulursa
-        # peer'lara gecmiste kalmis bir A_min yayinlanir.
-        if self._maneuver_path:
-            return
-
         state = self.state
         snapshot = self._telemetry.snapshot()
         if state in AIRBORNE_STATES:
@@ -1534,7 +1174,6 @@ class MissionManager:
             or not self._gate_crossed
             or self.state not in AIRBORNE_STATES
             or self._loitering
-            or self._maneuver_path
             or self._planned_arrival_ns <= 0
         ):
             self._reserve_mode = None

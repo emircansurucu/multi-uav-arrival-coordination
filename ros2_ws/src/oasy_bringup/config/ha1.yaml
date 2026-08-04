@@ -22,14 +22,6 @@ max_airspeed_mps: 28.0
 # (olculdu: 700 m kala -12 s hata, arac hedefe hala yavaslarken vardi).
 airspeed_rate_limit_mps2: 1.5
 timing_deadband_s: 0.5
-# KAPALI. Yurutme mekanizmasi calisiyor (AUTO gorev yuvalarina kismi yazma,
-# ucusta dogrulandi) ama GEOMETRI ucurulamiyor: manevra asgari hava hizinda
-# uculdugu icin arac dar donuslerde yol kaybediyor. Olculdu: komut 13 m/s
-# iken yer hizi 3.5 m/s'ye dustu, kalan mesafe 232 m'den 365 m'ye CIKTI ve
-# ~35 saniye boyunca hedeften uzaklasildi; takvime ~50 s eklendi. Ust uste
-# uc kosuda varis sirasi bozuldu. Acmadan once manevranin daha yuksek hizda
-# ve daha yumusak geometriyle ucurulmasi gerekiyor.
-s_maneuver_enabled: false
 # Yalniz rota uzerindeki son guvenli kapida, gerekiyorsa tek kez loiter.
 loiter_enabled: true
 status_publish_hz: 5.0
