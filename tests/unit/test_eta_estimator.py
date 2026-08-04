@@ -11,7 +11,6 @@ from oasy_uav_agent.estimation.eta_estimator import EtaEstimator
 from oasy_uav_agent.estimation.geodesy import (
     LatLon,
     geodesic_distance_m,
-    initial_bearing_deg,
     to_local_xy,
 )
 

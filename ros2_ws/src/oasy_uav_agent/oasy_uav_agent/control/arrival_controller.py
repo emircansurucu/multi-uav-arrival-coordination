@@ -83,6 +83,7 @@ class ArrivalController:
         planned_arrival_monotonic_ns: int,
         now_monotonic_ns: int,
         dt_s: float,
+        forced_airspeed_mps: Optional[float] = None,
     ) -> Optional[SpeedCommand]:
         """Yeni hiz komutunu hesaplar. Kontrol uygulanamiyorsa None doner.
 
@@ -99,11 +100,14 @@ class ArrivalController:
         remaining_time_s = (
             planned_arrival_monotonic_ns - now_monotonic_ns
         ) / NANOSECONDS_PER_SECOND
-        if remaining_time_s < MIN_REMAINING_TIME_S:
+        # Normal ETA orani son saniyelerde sayisal olarak kullanisli degildir.
+        # Rezerv bariyeri ise tam bu bolgede min/max hiz isteyebilir; acik bir
+        # zorlamaysa rate-limit korunarak uygulanmasina izin verilir.
+        if remaining_time_s < MIN_REMAINING_TIME_S and forced_airspeed_mps is None:
             return None
 
         timing_error_s = eta_s - remaining_time_s
-        if abs(timing_error_s) <= self._deadband_s:
+        if forced_airspeed_mps is None and abs(timing_error_s) <= self._deadband_s:
             return SpeedCommand(
                 action=ControlAction.HOLD,
                 airspeed_mps=self._commanded_mps,
@@ -115,10 +119,14 @@ class ArrivalController:
                 changed=False,
             )
 
-        if eta_s <= 0.0:
+        if eta_s <= 0.0 and forced_airspeed_mps is None:
             return None
 
-        required_mps = self._commanded_mps * (eta_s / remaining_time_s)
+        required_mps = (
+            forced_airspeed_mps
+            if forced_airspeed_mps is not None
+            else self._commanded_mps * (eta_s / remaining_time_s)
+        )
         target_mps = _clamp(required_mps, self._min_airspeed_mps, self._max_airspeed_mps)
         saturated = not math.isclose(target_mps, required_mps, rel_tol=1e-9)
 
@@ -135,8 +143,15 @@ class ArrivalController:
         if changed:
             self._last_sent_mps = self._commanded_mps
 
+        if delta_mps > 0.0:
+            action = ControlAction.SPEED_UP
+        elif delta_mps < 0.0:
+            action = ControlAction.SLOW_DOWN
+        else:
+            action = ControlAction.HOLD
+
         return SpeedCommand(
-            action=ControlAction.SPEED_UP if timing_error_s > 0 else ControlAction.SLOW_DOWN,
+            action=action,
             airspeed_mps=self._commanded_mps,
             timing_error_s=timing_error_s,
             required_speed_mps=required_mps,

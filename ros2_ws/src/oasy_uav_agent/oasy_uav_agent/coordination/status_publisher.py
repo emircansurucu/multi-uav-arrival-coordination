@@ -52,6 +52,7 @@ class StatusPublisher:
         msg.earliest_feasible_arrival_monotonic_ns = (
             mission.earliest_feasible_arrival_monotonic_ns
         )
+        # Bekleme kullanmadan E/L; bekleme yetkisi ayri tasinir.
         msg.wind_valid = mission.wind_valid
         msg.wind_speed = float(mission.wind_speed_mps)
         msg.wind_dir_deg = float(mission.wind_from_direction_deg)

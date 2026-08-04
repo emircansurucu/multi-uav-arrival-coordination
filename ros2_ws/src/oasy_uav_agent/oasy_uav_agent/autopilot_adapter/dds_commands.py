@@ -1,8 +1,9 @@
 """GUIDED modda konum hedefi gonderimi (AP_DDS /ap/cmd_gps_pose).
 
-Yalnizca S-manevrasi sirasinda kullanilir. ArduPlane GUIDED'da verilen
-noktaya gidip etrafinda cember atar; bu yuzden hedefin kendisi buradan
-komut edilmez. Son yaklasma AUTO gorevine birakilir, aksi halde arac
+S-manevrasi ve hedefin disindaki son yasal bekleme kapisinda kullanilir.
+ArduPlane GUIDED'da verilen noktaya gidip etrafinda cember atar; bu yuzden
+ortak hedefin kendisi buradan komut edilmez. Son yaklasma AUTO gorevine
+birakilir, aksi halde arac
 hedefin etrafinda donerek 5 m kabul yaricapina hic giremez ve dokumandaki
 2 km loiter yasagi ihlal edilir.
 """

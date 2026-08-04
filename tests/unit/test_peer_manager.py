@@ -19,12 +19,16 @@ def peer_api():
     )
     from oasy_uav_agent.coordination.peer_manager import PeerManager
 
-    def make_status(vehicle_id, wind_valid=True, wind_speed=8.0, wind_dir_deg=0.0):
+    def make_status(
+        vehicle_id, wind_valid=True, wind_speed=8.0, wind_dir_deg=0.0, **fields
+    ):
         status = messages.VehicleStatus()
         status.vehicle_id = vehicle_id
         status.wind_valid = wind_valid
         status.wind_speed = wind_speed
         status.wind_dir_deg = wind_dir_deg
+        for name, value in fields.items():
+            setattr(status, name, value)
         return status
 
     def make_peers(stale_after_s=2.0, lost_after_s=5.0):
@@ -77,3 +81,8 @@ def test_ruzgar_bilen_peer_yoksa_none(peer_api):
     peers.update(peer_api.status(1, wind_valid=False), SECOND_NS)
 
     assert peers.settled_wind(SECOND_NS) is None
+
+
+
+
+

@@ -10,6 +10,11 @@ DDS_UDP_PORT 2019
 # 0 = sinirsiz deneme, boylece baslatma sirasi onemsiz hale gelir.
 DDS_MAX_RETRY 0
 
+# GUIDED hedef ArduPlane'de loiter merkezidir. Degeri acikca sabitlemek,
+# 2 km yasak bolge ve 500 m rota sapmasi hesabini firmware varsayilanina
+# birakmaz; rota uzerindeki 2.5 km kapida cemberin en yakin noktasi 2.42 km'dir.
+WP_LOITER_RAD 80
+
 # Hava hizi sensoru varsayilan olarak takili (ARSPD_TYPE 2) ama EKF
 # fuzyonuna kapali (ARSPD_USE 0). Kapaliyken EKF ruzgar durumunu yalnizca
 # GPS yer hizindan ve manevralardan cikarabiliyor; EK3_WIND_P_NSE 0.1 ile

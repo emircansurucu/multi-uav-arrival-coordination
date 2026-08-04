@@ -154,6 +154,7 @@ def _log_progress(logger, snapshot, age_s, mission, coordination, config, now_ns
         f"zamanlama hatasi {plan_error_s:+.1f} s | capa {anchor_shift_s:+.1f} s | "
         f"plan T+{committed_in_s:.0f} s | "
         f"ruzgar {wind_text} | "
+        f"E {mission.robust_earliest_s:.0f} L {mission.robust_latest_s:.0f} "
         f"komut {mission.commanded_airspeed_mps:.1f} m/s | "
         f"yer hizi {snapshot.groundspeed_mps:.1f} m/s | "
         f"irtifa {snapshot.altitude_msl_m:.0f} m MSL | "
@@ -228,13 +229,13 @@ def main() -> int:
     # Gorev yoneticisi kendi thread'inde calisir: MAVLink cagrilari
     # bloklayici oldugu icin executor thread'lerinden cagrilamaz.
     mission = MissionManager(
-        config,
-        MavlinkCommander(config.mavlink_address),
-        vehicle.telemetry,
-        coordination.peers.committed_arrivals,
-        coordination.peers.feasible_arrivals,
-        vehicle.guided,
-        coordination.peers.settled_wind,
+        config=config,
+        commander=MavlinkCommander(config.mavlink_address),
+        telemetry=vehicle.telemetry,
+        peer_commitments=coordination.peers.committed_arrivals,
+        peer_feasible_arrivals=coordination.peers.feasible_arrivals,
+        guided_commander=vehicle.guided,
+        peer_wind=coordination.peers.settled_wind,
     )
     coordination.node.create_timer(
         1.0 / config.status_publish_hz,

@@ -124,3 +124,35 @@ def test_capa_tek_arac_verisiyle_de_hesaplanir():
 
     assert compute_feasible_anchor({3: BASE_NS}) == BASE_NS - 2 * SEPARATION_NS
     assert compute_feasible_anchor({}) is None
+
+
+
+
+
+def test_kapi_gecis_penceresi_hedef_suresinden_turetilir():
+    from oasy_uav_agent.coordination.arrival_schedule import compute_gate_release_window
+
+    S = NANOSECONDS_PER_SECOND
+    target = 1_000 * S
+    lower, upper = compute_gate_release_window(
+        target, terminal_earliest_s=200.0, terminal_latest_s=300.0,
+        early_margin_s=5.0, late_margin_s=8.0,
+    )
+    assert lower == 705 * S
+    assert upper == 792 * S
+
+
+def test_kapi_penceresi_kontrol_yetkisi_yoksa_bostur():
+    from oasy_uav_agent.coordination.arrival_schedule import compute_gate_release_window
+
+    lower, upper = compute_gate_release_window(
+        BASE_NS, terminal_earliest_s=300.0, terminal_latest_s=200.0,
+    )
+    assert lower > upper
+
+
+def test_kapi_penceresi_negatif_marji_reddeder():
+    from oasy_uav_agent.coordination.arrival_schedule import compute_gate_release_window
+
+    with pytest.raises(ValueError):
+        compute_gate_release_window(BASE_NS, 100.0, 200.0, early_margin_s=-1.0)

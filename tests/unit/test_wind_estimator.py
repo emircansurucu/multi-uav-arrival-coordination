@@ -10,6 +10,7 @@ from oasy_uav_agent.estimation.wind_estimator import (
     WindEstimate,
     WindFilter,
     estimate_wind,
+    route_duration_with_airspeed_ramp_s,
     route_duration_with_wind_s,
     wind_from_speed_direction,
 )
@@ -182,6 +183,26 @@ def test_asiri_ruzgarda_sure_sonsuza_gitmez():
 def test_sifir_hava_hizi_reddedilir():
     with pytest.raises(ValueError):
         route_duration_with_wind_s(HA1_HOME, HA1_ROUTE, 0.0, RUZGARSIZ)
+
+
+def test_hizlanma_rampasi_anlik_azami_hizdan_daha_uzun_surer():
+    anlik_azami_s = route_duration_with_wind_s(
+        HA1_HOME, HA1_ROUTE, 28.0, RUZGARSIZ
+    )
+    rampali_s = route_duration_with_airspeed_ramp_s(
+        HA1_HOME, HA1_ROUTE, 20.0, 28.0, 0.5, RUZGARSIZ
+    )
+    assert rampali_s > anlik_azami_s
+
+
+def test_yavaslama_rampasi_anlik_asgari_hizdan_daha_kisa_surer():
+    anlik_asgari_s = route_duration_with_wind_s(
+        HA1_HOME, HA1_ROUTE, 13.0, RUZGARSIZ
+    )
+    rampali_s = route_duration_with_airspeed_ramp_s(
+        HA1_HOME, HA1_ROUTE, 23.0, 13.0, 0.5, RUZGARSIZ
+    )
+    assert rampali_s < anlik_asgari_s
 
 
 def test_ha1_rotasinda_8ms_kuzey_ruzgarinin_etkisi():

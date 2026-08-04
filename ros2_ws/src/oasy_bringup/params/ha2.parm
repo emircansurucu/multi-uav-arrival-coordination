@@ -4,6 +4,9 @@ DDS_DOMAIN_ID 2
 DDS_UDP_PORT 2020
 DDS_MAX_RETRY 0
 
+# Son yasal bekleme kapisinin guvenlik hesabi bu sabit yaricapa dayanir.
+WP_LOITER_RAD 80
+
 # Hava hizi sensoru varsayilan olarak takili (ARSPD_TYPE 2) ama EKF
 # fuzyonuna kapali (ARSPD_USE 0). Kapaliyken EKF ruzgar durumunu yalnizca
 # GPS yer hizindan ve manevralardan cikarabiliyor; EK3_WIND_P_NSE 0.1 ile

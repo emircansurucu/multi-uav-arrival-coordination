@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from typing import NamedTuple, Optional, Tuple
+from typing import NamedTuple, Optional, Sequence, Tuple
 
 from geographiclib.geodesic import Geodesic
 
@@ -98,3 +98,77 @@ def circle_entry_fraction(
     root = math.sqrt(discriminant)
     entry = (-b - root) / (2.0 * a)
     return entry if 0.0 <= entry <= 1.0 else None
+
+
+def _refine_circle_entry(
+    start_xy: Tuple[float, float],
+    end_xy: Tuple[float, float],
+    center: LatLon,
+    radius_m: float,
+    fraction: float,
+) -> LatLon:
+    """Duzlem izdusumu cozumunu jeodezik mesafeye gore duzeltir.
+
+    to_local_xy esdikdortgen bir yaklasimdir ve hedefin birkac yuz metre
+    yakininda gecerlidir; 2.5 km yaricapta ~3 m sapma birakir. Kapi hem
+    "hedefe 2500 m" olarak raporlanip hem de gecis denetimi jeodezik
+    mesafeyle yapildigi icin iki olcunun ayni cemberi gostermesi gerekir.
+    """
+    def nokta(f: float) -> LatLon:
+        return from_local_xy(
+            start_xy[0] + f * (end_xy[0] - start_xy[0]),
+            start_xy[1] + f * (end_xy[1] - start_xy[1]),
+            center,
+        )
+
+    # Duzeltme izdusum hatasi kadar kucuktur; bacagin %2'lik komsulugu yeter.
+    lo = max(0.0, fraction - 0.02)
+    hi = min(1.0, fraction + 0.02)
+    if geodesic_distance_m(nokta(lo), center) < radius_m:
+        lo = 0.0
+    if (
+        geodesic_distance_m(nokta(lo), center) < radius_m
+        or geodesic_distance_m(nokta(hi), center) > radius_m
+    ):
+        # Beklenen kusatma kurulamadi; duzlem cozumu bozmadan birakilir.
+        return nokta(fraction)
+    for _ in range(40):
+        orta = 0.5 * (lo + hi)
+        if geodesic_distance_m(nokta(orta), center) > radius_m:
+            lo = orta
+        else:
+            hi = orta
+    return nokta(0.5 * (lo + hi))
+
+
+def last_circle_entry_on_route(
+    home: LatLon,
+    route: Sequence[LatLon],
+    center: LatLon,
+    radius_m: float,
+) -> Optional[Tuple[LatLon, int]]:
+    """Rotanin bir cembere son disaridan-iceri girisini bulur.
+
+    Donen indeks, kesisimin bulundugu bacagin aktif waypoint indeksidir.
+    Son girisin secilmesi onemlidir: rota korunan bolgeye girip yeniden
+    cikiyorsa, bekleme icin geri donulemez son firsat daha sonraki giristir.
+    """
+    if not route or radius_m <= 0.0:
+        return None
+
+    result: Optional[Tuple[LatLon, int]] = None
+    points = (home, *route)
+    for active_index, (start, end) in enumerate(zip(points, points[1:])):
+        start_xy = to_local_xy(start, center)
+        # Baslangic zaten icerideyse bu bacak yeni bir giris olamaz.
+        if math.hypot(*start_xy) <= radius_m:
+            continue
+        end_xy = to_local_xy(end, center)
+        fraction = circle_entry_fraction(start_xy, end_xy, radius_m)
+        if fraction is None:
+            continue
+        result = (
+            _refine_circle_entry(start_xy, end_xy, center, radius_m, fraction),
+            active_index,
+        )
+    return result

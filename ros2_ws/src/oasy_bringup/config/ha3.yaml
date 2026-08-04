@@ -17,13 +17,20 @@ nominal_cruise_speed_mps: 22.9
 # araligi bunlarin guvenli icinde tutulur.
 min_airspeed_mps: 13.0
 max_airspeed_mps: 28.0
-airspeed_rate_limit_mps2: 0.5
+# Hiz komutunun degisim hizi. 0.5 m/s2'de azamiden asgariye inmek 30 s
+# ve 615 m suruyor; gec beliren bir erkenlik bu mesafeye sigmiyordu
+# (olculdu: 700 m kala -12 s hata, arac hedefe hala yavaslarken vardi).
+airspeed_rate_limit_mps2: 1.5
 timing_deadband_s: 0.5
-# KAPALI. Planlama gecerli (19 test) ama GUIDED yurutmesi iki denemede de
-# yorungeyi tamamlamadi; arac takilip zamanlamayi bozuyor. Kosula bagli
-# tetikleyici dogru (hem HA-1 hem HA-3 bu duruma dustu), sorun yurutmede.
-s_maneuver_enabled: true
-# Hiz yetkisi tukendiginde 2 km disinda daire cizerek zaman kaybettirir.
+# KAPALI. Yurutme mekanizmasi calisiyor (AUTO gorev yuvalarina kismi yazma,
+# ucusta dogrulandi) ama GEOMETRI ucurulamiyor: manevra asgari hava hizinda
+# uculdugu icin arac dar donuslerde yol kaybediyor. Olculdu: komut 13 m/s
+# iken yer hizi 3.5 m/s'ye dustu, kalan mesafe 232 m'den 365 m'ye CIKTI ve
+# ~35 saniye boyunca hedeften uzaklasildi; takvime ~50 s eklendi. Ust uste
+# uc kosuda varis sirasi bozuldu. Acmadan once manevranin daha yuksek hizda
+# ve daha yumusak geometriyle ucurulmasi gerekiyor.
+s_maneuver_enabled: false
+# Yalniz rota uzerindeki son guvenli kapida, gerekiyorsa tek kez loiter.
 loiter_enabled: true
 status_publish_hz: 5.0
 peer_stale_after_s: 2.0

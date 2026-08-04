@@ -100,3 +100,33 @@ def target_arrival(
 def compute_takeoff_time(reference_arrival_ns: int, nominal_flight_s: float) -> int:
     """Referans varisa yetismek icin kalkisin yapilmasi gereken an."""
     return reference_arrival_ns - int(nominal_flight_s * NANOSECONDS_PER_SECOND)
+
+
+
+def compute_gate_release_window(
+    target_arrival_ns: int,
+    terminal_earliest_s: float,
+    terminal_latest_s: float,
+    early_margin_s: float = 0.0,
+    late_margin_s: float = 0.0,
+) -> Optional[Tuple[int, int]]:
+    """Hedeften, son yasal kapinin gecis zaman araligini turetir.
+
+    Kapidan sonra loiter yoktur. E terminalde gec kalmamak icin gereken
+    sureyi, L ise erken varisi yalniz hizla onleyebilecegimiz en uzun sureyi
+    temsil eder. Donen aralik bos olabilir; bu, secilen bozucu modeli ve
+    marjlar altinda kapidan sonraki kontrol yetkisinin yetersiz oldugunu
+    acikca gosterir.
+    """
+    if target_arrival_ns <= 0 or terminal_earliest_s < 0.0 or terminal_latest_s < 0.0:
+        return None
+    if early_margin_s < 0.0 or late_margin_s < 0.0:
+        raise ValueError("kapi marjlari negatif olamaz")
+
+    lower_ns = target_arrival_ns - int(
+        (terminal_latest_s - early_margin_s) * NANOSECONDS_PER_SECOND
+    )
+    upper_ns = target_arrival_ns - int(
+        (terminal_earliest_s + late_margin_s) * NANOSECONDS_PER_SECOND
+    )
+    return lower_ns, upper_ns

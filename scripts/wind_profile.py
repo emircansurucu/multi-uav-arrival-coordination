@@ -24,25 +24,50 @@ from typing import List, Sequence, Tuple
 from pymavlink import mavutil
 
 # (gorev basindan itibaren saniye, hiz m/s, ruzgarin GELDIGI yon derece)
-# Profil hem siddeti hem yonu degistirir; yon 270 -> 200 -> 90 -> 340 -> 45
-# ile dort kadrani da dolasir, boylece her rota bacagi farkli bilesenler gorur.
+#
+# SIM_WIND_TC birinci derece gecikmedir (AP_HAL_SITL/SITL_State.cpp: alpha =
+# calc_lowpass_alpha_dt(dt, 1/tc)), dolayisiyla tepe donus hizi Delta/tc'dir.
+# Bu, profilin ne kadar gercekci oldugunu belirleyen tek sayidir:
+#
+#   sakin hava gun ici salinimi   < 0.1 derece/s
+#   cephe gecisi                    0.2-0.5 derece/s
+#   firtina cikis cephesi           1.5-3 derece/s
+#
+# Profil 30 derecelik adimlar ve 60 s'lik zaman sabitiyle 0.5 derece/s tepe
+# hiz verir, yani bir CEPHE GECISI. Yon bati-kuzey ekseninde tek yonlu doner;
+# 330 ve 0 derece basamaklari son bacagin (rota 135 derece) kuyruk ruzgari
+# durumunu korur, yani zorlu vektor testte kalir.
 #
 # Siddet araligi aracin ucus zarfina gore secildi. Asgari hava hizi 13 m/s
 # oldugu icin ruzgar bu degere yaklastiginda yavaslama yetkisi ve yon tutma
 # birlikte kayboluyor: 13 m/s'lik bir basamakta yer hizi sifira yaklasti,
 # L1 son waypoint'i kesemedi ve hedefe 6 m yaklasilabildi (sinir 5 m).
-# 4-10 m/s araligi hem 2.5 kat siddet degisimi verir hem de araca her
-# durumda ilerleme birakir. Doküman ruzgar siddeti icin bir deger belirtmiyor.
+# 4-10 m/s araligi Beaufort 3-5'e denk gelir; 400 m irtifada bu, yerdeki
+# 5-7 m/s'ye karsilik gelen olagan bir gundur.
 DEFAULT_PROFILE: Sequence[Tuple[float, float, float]] = (
+    (0.0, 4.0, 270.0),
+    (180.0, 6.0, 300.0),
+    (360.0, 9.0, 330.0),
+    (540.0, 10.0, 0.0),
+    (720.0, 7.0, 30.0),
+)
+
+# UC DURUM. 70-110 derecelik adimlar ve 20 s zaman sabiti 5.5 derece/s tepe
+# hiz verir; bu bir firtina cikis cephesidir ve gercek harekatta ucus iptal
+# edilir. Silinmedi cunku algoritmanin sinirini gostermek icin degerli, ama
+# varsayilan dogrulama profili degildir.
+EXTREME_PROFILE: Sequence[Tuple[float, float, float]] = (
     (0.0, 4.0, 270.0),
     (180.0, 9.0, 200.0),
     (360.0, 6.0, 90.0),
     (540.0, 10.0, 340.0),
     (720.0, 5.0, 45.0),
 )
-# Gecis zaman sabiti. Varsayilan 5 s ani sayilabilecek kadar kisa; daha
-# uzun bir sabit ruzgarin gercekci sekilde donmesini saglar.
-WIND_CHANGE_TC_S = 20.0
+EXTREME_WIND_CHANGE_TC_S = 20.0
+
+# Gecis zaman sabiti. 30 derecelik adimla birlikte 0.5 derece/s tepe donus
+# hizi verir (cephe gecisi seviyesi).
+WIND_CHANGE_TC_S = 60.0
 SERIAL1_PORT_BASE = 5762
 PORT_STRIDE = 10
 CONNECT_TIMEOUT_S = 60
@@ -73,7 +98,7 @@ def apply_step(links: Sequence[mavutil.mavfile], speed: float, direction: float)
         set_param(link, "SIM_WIND_DIR", direction)
 
 
-def run(profile: Sequence[Tuple[float, float, float]]) -> int:
+def run(profile: Sequence[Tuple[float, float, float]], tc_s: float) -> int:
     links: List[mavutil.mavfile] = []
     for vehicle in (1, 2, 3):
         try:
@@ -81,10 +106,10 @@ def run(profile: Sequence[Tuple[float, float, float]]) -> int:
         except Exception as hata:  # baglanti kurulamazsa profil uygulanamaz
             print(f"HATA: {hata}", file=sys.stderr)
             return 1
-    print(f"uc araca baglanildi; {len(profile)} basamakli profil uygulanacak")
+    print(f"uc araca baglanildi; {len(profile)} basamakli profil, TC={tc_s:.0f} s")
 
     for link in links:
-        set_param(link, "SIM_WIND_TC", WIND_CHANGE_TC_S)
+        set_param(link, "SIM_WIND_TC", tc_s)
 
     baslangic = time.monotonic()
     for saniye, speed, direction in profile:
@@ -104,13 +129,28 @@ def main() -> int:
         action="store_true",
         help="profili uygulamadan yazdirir (rapor icin)",
     )
+    parser.add_argument(
+        "--extreme",
+        action="store_true",
+        help="firtina cikis cephesi profili (5.5 derece/s); varsayilan degildir",
+    )
     args = parser.parse_args()
 
+    profile = EXTREME_PROFILE if args.extreme else DEFAULT_PROFILE
+    tc_s = EXTREME_WIND_CHANGE_TC_S if args.extreme else WIND_CHANGE_TC_S
+
     if args.print_profile:
-        for saniye, speed, direction in DEFAULT_PROFILE:
-            print(f"t+{saniye:6.0f} s  {speed:5.1f} m/s  {direction:5.0f} derece")
+        onceki = None
+        for saniye, speed, direction in profile:
+            if onceki is None:
+                hiz = ""
+            else:
+                fark = (direction - onceki + 180) % 360 - 180
+                hiz = f"  ({fark:+.0f} derece, tepe {abs(fark) / tc_s:.2f} derece/s)"
+            print(f"t+{saniye:6.0f} s  {speed:5.1f} m/s  {direction:5.0f} derece{hiz}")
+            onceki = direction
         return 0
-    return run(DEFAULT_PROFILE)
+    return run(profile, tc_s)
 
 
 if __name__ == "__main__":

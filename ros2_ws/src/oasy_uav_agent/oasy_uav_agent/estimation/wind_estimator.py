@@ -181,6 +181,92 @@ def route_duration_with_wind_s(
     return total_s
 
 
+def route_duration_with_airspeed_ramp_s(
+    home: LatLon,
+    route: Sequence[LatLon],
+    initial_airspeed_mps: float,
+    target_airspeed_mps: float,
+    rate_limit_mps2: float,
+    wind: WindEstimate,
+    integration_step_s: float = 0.25,
+) -> float:
+    """Hiz sinirina anlik degil rate-limit ile ulasilan rota suresi.
+
+    E/L sinirlari min/max hava hizina bir tick'te gecilebildigini varsayarsa
+    kalan kontrol yetkisini iyimser gosterir. Yalnizca kisa hiz rampasi
+    sayisal olarak entegre edilir; hedef hiza ulasildiktan sonraki rota
+    analitik bacak modeliyle tamamlanir. Boylece maliyet rota uzunluguyla
+    degil, en fazla hiz gecisinin suresiyle sinirlidir.
+    """
+    if initial_airspeed_mps <= 0.0 or target_airspeed_mps <= 0.0:
+        raise ValueError("hava hizlari pozitif olmali")
+    if rate_limit_mps2 <= 0.0:
+        raise ValueError("hiz degisim siniri pozitif olmali")
+    if integration_step_s <= 0.0:
+        raise ValueError("entegrasyon adimi pozitif olmali")
+    if not route:
+        return 0.0
+    if math.isclose(initial_airspeed_mps, target_airspeed_mps, abs_tol=1e-9):
+        return route_duration_with_wind_s(home, route, target_airspeed_mps, wind)
+
+    points = (home, *route)
+    leg_index = 0
+    remaining_leg_m = geodesic_distance_m(points[0], points[1])
+    airspeed_mps = initial_airspeed_mps
+    elapsed_s = 0.0
+    direction = 1.0 if target_airspeed_mps > initial_airspeed_mps else -1.0
+
+    while leg_index < len(points) - 1:
+        if remaining_leg_m <= 1e-6:
+            leg_index += 1
+            if leg_index >= len(points) - 1:
+                return elapsed_s
+            remaining_leg_m = geodesic_distance_m(
+                points[leg_index], points[leg_index + 1]
+            )
+            continue
+
+        speed_gap_mps = abs(target_airspeed_mps - airspeed_mps)
+        if speed_gap_mps <= 1e-9:
+            # Rampadan kalan bacak parcasi ve sonraki tam bacaklar.
+            elapsed_s += remaining_leg_m / _ground_speed_along_leg_mps(
+                points[leg_index], points[leg_index + 1], target_airspeed_mps, wind
+            )
+            for start, end in zip(points[leg_index + 1:], points[leg_index + 2:]):
+                length_m = geodesic_distance_m(start, end)
+                if length_m > 0.0:
+                    elapsed_s += length_m / _ground_speed_along_leg_mps(
+                        start, end, target_airspeed_mps, wind
+                    )
+            return elapsed_s
+
+        dt_s = min(integration_step_s, speed_gap_mps / rate_limit_mps2)
+        next_airspeed_mps = airspeed_mps + direction * rate_limit_mps2 * dt_s
+        ground_before_mps = _ground_speed_along_leg_mps(
+            points[leg_index], points[leg_index + 1], airspeed_mps, wind
+        )
+        ground_after_mps = _ground_speed_along_leg_mps(
+            points[leg_index], points[leg_index + 1], next_airspeed_mps, wind
+        )
+        travelled_m = 0.5 * (ground_before_mps + ground_after_mps) * dt_s
+
+        if travelled_m < remaining_leg_m:
+            remaining_leg_m -= travelled_m
+            elapsed_s += dt_s
+            airspeed_mps = next_airspeed_mps
+            continue
+
+        # Rampa bir waypoint'i geciyorsa adimin yalniz o bacaga dusen
+        # kismini kullan; sonraki bacakta yeni dogrultuyla tekrar hesapla.
+        used_fraction = remaining_leg_m / max(travelled_m, 1e-9)
+        used_dt_s = dt_s * used_fraction
+        elapsed_s += used_dt_s
+        airspeed_mps += direction * rate_limit_mps2 * used_dt_s
+        remaining_leg_m = 0.0
+
+    return elapsed_s
+
+
 def _ground_speed_along_leg_mps(
     start: LatLon, end: LatLon, airspeed_mps: float, wind: WindEstimate
 ) -> float:

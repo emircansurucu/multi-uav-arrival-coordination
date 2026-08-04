@@ -46,6 +46,17 @@ def test_varisa_az_kalinca_komut_degismez():
     assert result is None
 
 
+def test_rezerv_zorlamasi_son_yaklasmada_da_uygulanir():
+    controller = make_controller()
+    onceki = controller.commanded_airspeed_mps
+    result = controller.update(
+        5.0, 100.0, planned_in(5.0), NOW_NS, 1.0, forced_airspeed_mps=15.0
+    )
+    assert result is not None
+    assert result.action is ControlAction.SLOW_DOWN
+    assert controller.commanded_airspeed_mps < onceki
+
+
 def test_deadband_icinde_mudahale_yok():
     controller = make_controller()
     onceki = controller.commanded_airspeed_mps
@@ -151,4 +162,3 @@ def test_kucuk_adimlar_birikince_komut_gonderilir():
         if command is not None and command.changed:
             gonderilen += 1
     assert gonderilen > 0
-

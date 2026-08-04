@@ -124,6 +124,53 @@ class MavlinkCommander:
         logger.info("Gorev yuklendi: %d oge", len(items))
         return True
 
+    def write_mission_slots(self, start_index: int, items: Sequence[MissionItem]) -> bool:
+        """Gorevi silmeden yalnizca verilen indeks araligini yeniden yazar.
+
+        Ucus sirasinda kullanilir: mission_clear_all gonderilmez, oge sayisi
+        degismez, mod degismez. ArduPilot bunu MissionItemProtocol.cpp icinde
+        handle_mission_write_partial_list ile karsilar.
+
+        Cagiran, yalnizca aracin HENUZ GECMEDIGI yuvalari yazmalidir: otopilot
+        gitmekte oldugu noktayi next_WP_loc'ta onbellege aldigi icin aktif
+        ogeyi degistirmek etkisiz kalir.
+        """
+        if not items:
+            return True
+        conn = self._conn
+        end_index = start_index + len(items) - 1
+        conn.mav.mission_write_partial_list_send(
+            conn.target_system, conn.target_component, start_index, end_index
+        )
+
+        remaining = set(range(start_index, end_index + 1))
+        deadline = time.monotonic() + ACK_TIMEOUT_S * len(items)
+        while remaining and time.monotonic() < deadline:
+            request = conn.recv_match(
+                type=["MISSION_REQUEST", "MISSION_REQUEST_INT"],
+                blocking=True, timeout=ACK_TIMEOUT_S,
+            )
+            if request is None:
+                continue
+            if request.seq not in remaining:
+                continue
+            self._send_item(request.seq, items[request.seq - start_index])
+            remaining.discard(request.seq)
+
+        ack = conn.recv_match(type="MISSION_ACK", blocking=True, timeout=ACK_TIMEOUT_S)
+        if ack is None or ack.type != mavutil.mavlink.MAV_MISSION_ACCEPTED:
+            logger.error("Gorev yuvalari yazilamadi (ack=%s)", ack)
+            return False
+        logger.info("Gorev yuvalari yazildi: %d..%d", start_index, end_index)
+        return True
+
+    def current_mission_seq(self, timeout_s: float = 2.0) -> Optional[int]:
+        """Otopilotun uzerinde calistigi gorev ogesinin indeksi."""
+        message = self._conn.recv_match(
+            type="MISSION_CURRENT", blocking=True, timeout=timeout_s
+        )
+        return None if message is None else int(message.seq)
+
     def _send_item(self, seq: int, item: MissionItem) -> None:
         conn = self._conn
         conn.mav.mission_item_int_send(

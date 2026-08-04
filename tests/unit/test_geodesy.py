@@ -9,6 +9,7 @@ from oasy_uav_agent.estimation.geodesy import (
     cross_track_distance_m,
     geodesic_distance_m,
     initial_bearing_deg,
+    last_circle_entry_on_route,
     to_local_xy,
 )
 
@@ -99,3 +100,35 @@ def test_cembere_teget_gecis():
     # Tam yaricap mesafesinden tegetsel gecis; sayisal olarak tek kok.
     fraction = circle_entry_fraction((-50.0, 5.0), (50.0, 5.0), 5.0)
     assert fraction == pytest.approx(0.5, abs=1e-6)
+
+
+def test_rotanin_cembere_son_girisi_bulunur():
+    disari = LatLon(TARGET.lat + 0.04, TARGET.lon)
+    iceri = LatLon(TARGET.lat + 0.01, TARGET.lon)
+    result = last_circle_entry_on_route(disari, (iceri, TARGET), TARGET, 2500.0)
+
+    assert result is not None
+    gate, active_index = result
+    assert active_index == 0
+    assert geodesic_distance_m(gate, TARGET) == pytest.approx(2500.0, abs=2.0)
+
+
+def test_rota_cikip_yeniden_girerse_son_giris_secilir():
+    kuzey_dis = LatLon(TARGET.lat + 0.04, TARGET.lon)
+    kuzey_ic = LatLon(TARGET.lat + 0.01, TARGET.lon)
+    guney_dis = LatLon(TARGET.lat - 0.04, TARGET.lon)
+    guney_ic = LatLon(TARGET.lat - 0.01, TARGET.lon)
+    route = (kuzey_ic, guney_dis, guney_ic, TARGET)
+
+    result = last_circle_entry_on_route(kuzey_dis, route, TARGET, 2500.0)
+
+    assert result is not None
+    gate, active_index = result
+    assert active_index == 2
+    assert gate.lat < TARGET.lat
+    assert geodesic_distance_m(gate, TARGET) == pytest.approx(2500.0, abs=2.0)
+
+
+def test_rota_bastan_icerideyse_yeni_giris_yoktur():
+    iceri = LatLon(TARGET.lat + 0.005, TARGET.lon)
+    assert last_circle_entry_on_route(iceri, (TARGET,), TARGET, 2500.0) is None
