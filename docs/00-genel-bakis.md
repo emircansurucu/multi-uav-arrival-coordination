@@ -1,4 +1,4 @@
-# OASY — Teknik Rapor: Genel Bakış
+# OASY Teknik Rapor: Genel Bakış
 
 Üç sabit kanatlı İHA'nın (ArduPlane 4.6.3 SITL) farklı pistlerden otonom kalkıp
 ortak bir hedefe **HA-1 → HA-2 → HA-3** sırasıyla ve aralarında **tam 20 saniye**
@@ -9,7 +9,7 @@ kararını diğerlerinin yayınlarını dinleyerek bağımsız verir.
 
 ## Sonuç Özeti
 
-Mevcut derlemeyle, senaryo başına iki koşu — **altısı da geçti**:
+Mevcut derlemeyle, senaryo başına iki koşu, **altısı da geçti**:
 
 | Senaryo | Koşu 1 | Koşu 2 | Havada bekleme |
 |---|---|---|---|
@@ -36,11 +36,11 @@ az olacak şekilde optimal senaryo").
 | 2 | Sıra HA-1/2/3, 5 m kabul, RTL | [Varış Tespiti](kavramlar/10-varis-tespiti.md) |
 | 3 | 400 m MSL | `cruise_alt_msl_m`, görev üretimi |
 | 4 | WP yarıçapı ≤400 m, sapma ≤500 m | 120 m seçildi; [Jeodezi](kavramlar/09-jeodezi.md) |
-| 5 | Zamanlama yöntemleri | 4 yöntemden **3'ü** — [Algoritmalar](03-algoritmalar.md) |
+| 5 | Zamanlama yöntemleri | 4 yöntemden **3'ü** [Algoritmalar](03-algoritmalar.md) |
 | 6 | 2 km içinde loiter yasak | [Son Yasal Kapı](kavramlar/12-son-yasal-kapi.md) |
 | 7 | Değişken rüzgâr, robustluk | [Rüzgâr Profili](kavramlar/16-ruzgar-profili-ve-gercekcilik.md) |
 | 8 | Bekleme asgari | [Kalkış Slotu](kavramlar/05-kalkis-slotu-ve-yer-gecikmesi.md) |
-| — | AP_DDS ile telemetri | [DDS Mimarisi](kavramlar/15-dds-mimarisi-ve-domain-ayrimi.md) |
+| yok | AP_DDS ile telemetri | [DDS Mimarisi](kavramlar/15-dds-mimarisi-ve-domain-ayrimi.md) |
 
 ## Rapor Yapısı
 
@@ -64,7 +64,7 @@ ve sınırlamaları.
 | Sayfa | Çekirdek fikir |
 |---|---|
 | [01 - Görev Durum Makinesi](kavramlar/01-gorev-durum-makinesi.md) | 14 durum, tek yönlü akış, 20 Hz döngü |
-| [02 - Merkeziyetsiz Çıpa](kavramlar/02-merkeziyetsiz-capa.md) | $A = \max_i(E_i - 20(i-1))$ — komutsuz ortak referans |
+| [02 - Merkeziyetsiz Çıpa](kavramlar/02-merkeziyetsiz-capa.md) | $A = \max_i(E_i - 20(i-1))$ komutsuz ortak referans |
 | [03 - Peer Yönetimi ve Tazelik](kavramlar/03-peer-yonetimi-ve-tazelik.md) | TAZE / ESKİ / KAYIP; deterministik kaynak seçimi |
 | [04 - Plan Revizyonu](kavramlar/04-plan-revizyonu.md) | Rüzgâr öğrenilince plan **yalnızca ileri** çekilir |
 | [05 - Kalkış Slotu](kavramlar/05-kalkis-slotu-ve-yer-gecikmesi.md) | Yerde beklemek bedava; hesap ölçümü 0.1 s içinde öngörüyor |
@@ -74,7 +74,7 @@ ve sınırlamaları.
 | Sayfa | Çekirdek fikir |
 |---|---|
 | [06 - Rüzgâr Kestirimi](kavramlar/06-ruzgar-kestirimi.md) | Hesap cebirsel olarak **EKF'in kendi durumunu geri okuyor** |
-| [07 - Rüzgâr Düzeltmeli Rota Süresi](kavramlar/07-ruzgar-duzeltmeli-rota-suresi.md) | Aynı rüzgâr dört bacakta 7.45–25.71 m/s |
+| [07 - Rüzgâr Düzeltmeli Rota Süresi](kavramlar/07-ruzgar-duzeltmeli-rota-suresi.md) | Aynı rüzgâr dört bacakta 7.45-25.71 m/s |
 | [08 - ETA ve Kalan Mesafe](kavramlar/08-eta-ve-kalan-mesafe.md) | İzdüşüm testi; ölçülen hıza bölmemek |
 | [09 - Jeodezi](kavramlar/09-jeodezi.md) | Ne zaman elipsoit, ne zaman düzlem |
 | [10 - Varış Tespiti](kavramlar/10-varis-tespiti.md) | Teğet geçişte marj **tek örnek** |
@@ -100,7 +100,7 @@ ve sınırlamaları.
 ### 1. Ölçülen hıza bölmek zamanlamayı bozuyor
 
 ETA `kalan_mesafe / ölçülen_yer_hızı` ile hesaplanıyordu. Dönüşlerde ilerleme
-hızı çöküyor ve ETA fırlıyordu — aynı yerde, aynı hızda **30 saniyelik hayalî
+hızı çöküyor ve ETA fırlıyordu, aynı yerde, aynı hızda **30 saniyelik hayalî
 gecikme**.
 
 Model tabanlı hesaba geçince salınım **±15 s → ±0.7 s**. Tek düzeltme üç ayrı
@@ -122,16 +122,16 @@ ve [Terminal Rezerv](kavramlar/13-terminal-rezerv.md) tam bunun için var.
 
 ### 3. Kendi doğrulama testimiz gerçek dışıydı
 
-Profilimiz rüzgârı 20 saniyede 110° döndürüyordu — **5.5 °/s**, yani fırtına
+Profilimiz rüzgârı 20 saniyede 110° döndürüyordu, **5.5 °/s**, yani fırtına
 çıkış cephesi seviyesi, 12 dakikada dört kez.
 
 Bu yüzden üç ayrı "çözüm" boşa gitti. Profil cephe geçişi seviyesine
 (**0.50 °/s**) indirilince, **kod değişmeden** üç senaryo da geçti.
 
-Kritik nokta: test zayıflamadı. Rüzgâr hızları aynı kaldı ve yeni profil son
+Test zayıflamadı. Rüzgâr hızları aynı kaldı ve yeni profil son
 bacakta kuyruk rüzgârını **daha uzun süre** üretiyor (5 adımın 3'ü, eskiden 1'i).
 
-> **Ders:** Bir doğrulama senaryosu başarısızlık üretiyorsa, önce senaryonun
+> Bir doğrulama senaryosu başarısızlık üretiyorsa, önce senaryonun
 > kendisinin fiziksel olarak savunulabilir olduğunu doğrula.
 
 ## Bilinen Sınırlamalar
@@ -141,7 +141,7 @@ Dürüstlük gereği açıkça listelenir:
 | Eksik | Durum |
 |---|---|
 | `FAILSAFE` işleyicisi | `safety_manager.py` **boş** (0 satır) |
-| S-manevrası | Uygulandı, ölçüldü, **kaldırıldı** — [gerekçe](04-gelistirme-ve-testler.md#44-s-manevrası-neden-yok) |
+| S-manevrası | Uygulandı, ölçüldü, **kaldırıldı** [gerekçe](04-gelistirme-ve-testler.md#44-s-manevrası-neden-yok) |
 | Uç durum rüzgârı | 5.5 °/s dönüşte sapma −2.55 s (ölçülmüş sınır) |
 | Öncüye bağımlılık | Rüzgâr bilgisi tek kaynaktan |
 | Split-brain | Ağ bölünmesine karşı koruma yok |
@@ -151,11 +151,11 @@ Dürüstlük gereği açıkça listelenir:
 
 | Dizin | İçerik |
 |---|---|
-| `ros2_ws/src/oasy_uav_agent/` | Agent paketi — durum makinesi, kestirim, kontrol, koordinasyon |
-| `ros2_ws/src/oasy_interfaces/` | `VehicleStatus.msg` — colcon'a hazır |
+| `ros2_ws/src/oasy_uav_agent/` | Agent paketi durum makinesi, kestirim, kontrol, koordinasyon |
+| `ros2_ws/src/oasy_interfaces/` | `VehicleStatus.msg` colcon'a hazır |
 | `ros2_ws/src/oasy_bringup/` | Launch dosyaları, araç konfigürasyonları, SITL parametreleri |
 | `scripts/` | Başlatma, rüzgâr profili, koşu analizi |
-| `tests/unit/` | 201 birim testi |
+| `tests/unit/` | 161 birim testi |
 | `ardupilot/` | ArduPlane 4.6.3 (klonlandı, **değişiklik yapılmadı**) |
 
 Ayrıntılı dosya haritası ve çalıştırma talimatları `README.md`'de.

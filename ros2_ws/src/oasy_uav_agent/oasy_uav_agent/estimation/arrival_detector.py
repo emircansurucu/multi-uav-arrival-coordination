@@ -1,12 +1,4 @@
-"""Hedefin kabul cemberine ilk girisinin tespiti.
-
-Basari kriteri 5 m yaricapli cembere giristir. Telemetri ornekleri arasinda
-kalan bir gecis kacirilmasin diye ardisik iki konum arasindaki dogru parcasi
-cemberle kesistirilir; giris ani bu kesisimden interpolasyonla bulunur.
-
-En yakin gecis mesafesi basari olcutu degildir; yalnizca metrik ve
-basarisizlik teshisi icin tutulur.
-"""
+"""hedef kabul çemberine ilk girişi tespit eder"""
 from __future__ import annotations
 
 import math
@@ -14,13 +6,14 @@ from typing import Optional, Tuple
 
 from .geodesy import LatLon, circle_entry_fraction, to_local_xy
 
-DEFAULT_ARRIVAL_RADIUS_M = 5.0
+DEFAULT_ARRIVAL_RADIUS_M = 5.0  # varsayılan varış kabul yarıçapı
 
 
 class ArrivalDetector:
-    """Varis olayini bir kez uretir; tekrarlanan tetiklemeyi engeller."""
+    """varış olayını yalnızca ilk girişte üretir"""
 
     def __init__(self, target: LatLon, radius_m: float = DEFAULT_ARRIVAL_RADIUS_M) -> None:
+        """hedefi ve varış kabul yarıçapını hazırlar"""
         self._target = target
         self._radius_m = radius_m
         self._previous: Optional[Tuple[Tuple[float, float], int]] = None
@@ -30,10 +23,11 @@ class ArrivalDetector:
 
     @property
     def arrived(self) -> bool:
+        """varış olayının daha önce oluşup oluşmadığını döner"""
         return self.arrival_monotonic_ns is not None
 
     def update(self, position: LatLon, monotonic_ns: int) -> bool:
-        """Yeni telemetri ornegini isler. Varis bu cagride olustuysa True doner."""
+        """yeni konumu işler varış oluştuysa true döndürür"""
         if self.arrived:
             return False
 
@@ -48,7 +42,7 @@ class ArrivalDetector:
                 self.arrival_monotonic_ns = previous_ns + int(
                     fraction * (monotonic_ns - previous_ns)
                 )
-                # Dogrudan cember icinde bir ornek yoksa giris ani turetilmistir.
+                # örnekler arasındaki çember girişini işaretler
                 self.interpolated = distance_m > self._radius_m
                 return True
 

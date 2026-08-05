@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
-# Tum SITL, XRCE agent ve agent node sureclerini durdurur ve portlarin
-# serbest kalmasini bekler.
-#
-# Desenlerde koseli parantez kullanilir; aksi halde pgrep bu betigin kendi
-# komut satirini de eslestirip kendini oldurur.
-#
-# Port beklemesi zorunlu: SITL hemen yeniden baslatilirsa TCP 5760 ve UDP
-# 2019 hala tutulu oldugu icin arduplane bind edemeden sessizce cikiyor.
+# sitl xrce agent ve araç düğümlerini durdurup portları bekler
 set -uo pipefail
 
-PORT_WAIT_ATTEMPTS=30
-PORT_WAIT_INTERVAL_S=1
+PORT_WAIT_ATTEMPTS=30  # port bekleme deneme sayısı
+PORT_WAIT_INTERVAL_S=1  # port denemeleri arasındaki süre
 
 PATTERNS=(
   "oasy_uav_agent/agent_nod[e]"

@@ -10,7 +10,7 @@ geldiyse? 10 saniye önce? Araç düşmüş, ağ kopmuş ya da süreç ölmüş 
 Eski bir konuma göre plan yapmak, olmayan bir uçağa yol vermek demektir.
 
 Sezgi: Karanlıkta el fenerleriyle yürüyen üç kişisiniz. Birinin ışığını en son
-bir saniye önce gördüysen yerini bilirsin. On saniyedir görmüyorsan — durdu mu,
+bir saniye önce gördüysen yerini bilirsin. On saniyedir görmüyorsan, durdu mu,
 düştü mü, yön mü değiştirdi, bilemezsin. Ona göre adım atmaya devam edersen
 çarpışırsın.
 
@@ -19,7 +19,7 @@ Bu modül üç seviye tanır:
 | Seviye | Anlam | Sonuç |
 |---|---|---|
 | **TAZE** | son mesaj < 2 s | her amaçla kullanılır |
-| **ESKİ** | 2–5 s | yalnızca kesin olgular kullanılır |
+| **ESKİ** | 2-5 s | yalnızca kesin olgular kullanılır |
 | **KAYIP** | > 5 s | tamamen dışlanır |
 
 ## 2. Neden Var? Hangi Problemi Çözüyor?
@@ -45,14 +45,14 @@ Dört somut problem çözer:
 
 ## 3. Nasıl Çalışır? (Adım Adım)
 
-### Adım 1 — Kendi yayınını ele
+### Adım 1 Kendi yayınını ele
 
 ```python
 if status.vehicle_id == self._own_vehicle_id:
     return False
 ```
 
-### Adım 2 — Geriye giden mesajı reddet
+### Adım 2 Geriye giden mesajı reddet
 
 ```python
 if existing is not None and status.monotonic_ns < existing.status.monotonic_ns:
@@ -64,16 +64,16 @@ Karşılaştırma **gönderenin** zaman damgasına göre yapılır, alım anına
 değil. Sırasız teslimde eski mesaj yeniyi ezemez. `rejected_count` sayacı
 tanılama için tutulur.
 
-### Adım 3 — Alım anını kaydet
+### Adım 3 Alım anını kaydet
 
 ```python
 self._peers[status.vehicle_id] = PeerRecord(status, received_monotonic_ns)
 ```
 
-Tazelik **alım anına** göre ölçülür, gönderim anına göre değil — süreçler arası
+Tazelik **alım anına** göre ölçülür, gönderim anına göre değil, süreçler arası
 saat farkı ve gecikme bu şekilde soğurulur.
 
-### Adım 4 — Tazelik sınıfla
+### Adım 4 Tazelik sınıfla
 
 ```python
 def freshness(self, vehicle_id, now_monotonic_ns) -> PeerFreshness:
@@ -85,7 +85,7 @@ def freshness(self, vehicle_id, now_monotonic_ns) -> PeerFreshness:
     return PeerFreshness.FRESH
 ```
 
-### Adım 5 — Amaca göre filtrele
+### Adım 5 Amaca göre filtrele
 
 Farklı tüketiciler farklı tazelik ister:
 
@@ -98,7 +98,7 @@ Farklı tüketiciler farklı tazelik ister:
 Kesin olgular (varış anı gibi) ESKİ peer'dan bile kabul edilir; hareketli
 kestirimler ise tazelik ister.
 
-### Adım 6 — Rüzgâr kaynağını deterministik seç
+### Adım 6 Rüzgâr kaynağını deterministik seç
 
 ```python
 for vehicle_id in sorted(peers):        # EN KUCUK ID
@@ -128,7 +128,7 @@ BEST_EFFORT ile ardışık birkaç kayıp normaldir. 10 ardışık kayıp ise ge
 sorunun işaretidir.
 
 **Neden 25 mesaj?** Kayıp ilan etmek çıpa kümesini daraltır ve takvimi değiştirir
-— bu ağır bir karardır, acele edilmemeli.
+bu ağır bir karardır, acele edilmemeli.
 
 ### Yanlış sınıflandırma maliyeti asimetriktir
 
@@ -148,7 +148,7 @@ $$\forall i, j: \quad \mathcal{P}_i(t) = \mathcal{P}_j(t)$$
 
 $\mathcal{P}_i$ = araç $i$'nin gördüğü geçerli peer kümesi. Bu, eşiklerin
 **aynı** olmasına ve mesajların yaklaşık aynı anda ulaşmasına bağlıdır. Sınırda
-(yaş tam 2.0 s) araçlar ayrışabilir — kaçınılmaz bir yarış, ama sonucu geçicidir.
+(yaş tam 2.0 s) araçlar ayrışabilir, kaçınılmaz bir yarış, ama sonucu geçicidir.
 
 ## 5. Geometrik/Görsel Sezgi
 
@@ -207,7 +207,7 @@ her durum satırında raporlanır.
 peer: HA-1: 0.2 s, HA-2: 0.0 s
 ```
 
-Yaşlar 0.0–0.2 s — yayın aralığının içinde. İkisi de TAZE, çıpa kümesinde.
+Yaşlar 0.0-0.2 s, yayın aralığının içinde. İkisi de TAZE, çıpa kümesinde.
 
 **Rüzgâr kaynağı seçimi.** HA-2 ve HA-3 havada, ikisinin de rüzgâr kestirimi
 oturmuş. Deterministik kural en küçük id'yi seçer → **HA-2**. Üç araç da aynı
@@ -217,7 +217,7 @@ Alternatif "en taze" kuralı seçilseydi: HA-2'nin mesajı 0.05 s, HA-3'ünki 0.
 yaşındaysa HA-3 seçilirdi; bir sonraki tick'te sıra değişebilirdi. Nominal uçuş
 süresi her seferinde yeniden hesaplanır, kalkış slotu titrer.
 
-**Kayıp mesaj sayacı.** Koşu boyunca `kayip mesaj 0` — sırasız teslim yaşanmadı.
+**Kayıp mesaj sayacı.** Koşu boyunca `kayip mesaj 0`, sırasız teslim yaşanmadı.
 Bu sayaç sıfırdan farklı olsaydı DDS katmanında sorun var demekti.
 
 **Bayat veri olayının maliyeti.** Bu proje boyunca ölçülen en pahalı tazelik
@@ -226,7 +226,7 @@ Araç RTL'e girmiş, rüzgâr ölçümü anlamını yitirmişti ama `wind_valid`
 hâlâ doğruydu. Diğer araçlar bu ölü değere göre plan kuruyordu.
 
 **Maliyet: 12 saniye** zamanlama hatası. Düzeltme: yayınlanan alanın tazelik
-bilgisi taşıması — `wind_valid` yalnızca araç havadayken ve kestirim oturmuşken
+bilgisi taşıması, `wind_valid` yalnızca araç havadayken ve kestirim oturmuşken
 doğru olur.
 
 ## 8. Sonuç Nasıl Olur?
@@ -240,7 +240,7 @@ doğru olur.
 | `settled_wind(now)` | (hız, yön) çifti ya da `None` |
 | `freshness(id, now)` | TAZE / ESKİ / KAYIP |
 
-Hepsi `now_monotonic_ns` alır — tazelik sorgu anında değerlendirilir, önceden
+Hepsi `now_monotonic_ns` alır, tazelik sorgu anında değerlendirilir, önceden
 hesaplanmaz.
 
 ## 9. Sınırlamalar / Yapamayacağı
@@ -251,7 +251,7 @@ hesaplanmaz.
 - **Sınırda yarış.** Yaş tam eşikteyken araçlar farklı sınıflandırabilir.
   Histerezis yok.
 - **Kaynak seçimi kaliteye bakmaz.** En küçük id seçilir; o aracın kestirimi
-  daha kötü olabilir. Determinizm doğruluğa tercih edilmiştir — bilinçli.
+  daha kötü olabilir. Determinizm doğruluğa tercih edilmiştir, bilinçli.
 - **Kimlik doğrulama yok.** Sahte bir `vehicle_id` yayını sisteme girer.
   Simülasyon ortamı için kabul edilebilir.
 - **Yaş, alım anına göre.** Gönderen tarafın saati geri giderse tespit edilmez;
@@ -266,7 +266,7 @@ hesaplanmaz.
 | Deterministik rüzgâr kaynağı | `settled_wind()` |
 | Yayın tarafı | [`status_publisher.py`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/coordination/status_publisher.py) |
 | Mesaj tanımı | [`VehicleStatus.msg`](../../ros2_ws/src/oasy_interfaces/msg/VehicleStatus.msg) |
-| Abonelik | [`agent_node.py`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/agent_node.py) — koordinasyon domain'i |
+| Abonelik | [`agent_node.py`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/agent_node.py) koordinasyon domain'i |
 
 ## 11. Kod Örneği
 
@@ -304,14 +304,14 @@ if existing is not None and status.monotonic_ns < existing.status.monotonic_ns:
 
 ## 12. İlgili Kavramlar
 
-- [02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md) — peer verisinin ana tüketicisi.
-- [15 - DDS Mimarisi](15-dds-mimarisi-ve-domain-ayrimi.md) — mesajların taşındığı kanal.
-- [06 - Rüzgâr Kestirimi](06-ruzgar-kestirimi.md) — `settled_wind`'in kaynağı.
-- [05 - Kalkış Slotu](05-kalkis-slotu-ve-yer-gecikmesi.md) — yerdeki aracın peer rüzgârına bağımlılığı.
+- [02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md) peer verisinin ana tüketicisi.
+- [15 - DDS Mimarisi](15-dds-mimarisi-ve-domain-ayrimi.md) mesajların taşındığı kanal.
+- [06 - Rüzgâr Kestirimi](06-ruzgar-kestirimi.md) `settled_wind`'in kaynağı.
+- [05 - Kalkış Slotu](05-kalkis-slotu-ve-yer-gecikmesi.md) yerdeki aracın peer rüzgârına bağımlılığı.
 
 ## 13. Kaynaklar
 
 - Vaka belgesi madde 1: *"her HA kendi kararını ağdaki diğer araçları dinleyerek
-  bağımsız olarak vermelidir"* — bu modülün varlık sebebi.
-- Kod yorumu, `peer_manager.py` — "en taze" yerine "en küçük id" seçiminin
+  bağımsız olarak vermelidir"*, bu modülün varlık sebebi.
+- Kod yorumu, `peer_manager.py` "en taze" yerine "en küçük id" seçiminin
   ölçülmüş gerekçesi.

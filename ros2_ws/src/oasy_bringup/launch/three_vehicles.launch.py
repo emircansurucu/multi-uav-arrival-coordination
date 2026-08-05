@@ -1,22 +1,15 @@
-"""Uc aracin agent node'unu ayni anda baslatir.
-
-Launch yalnizca surecleri baslatir; hicbir ucus karari uretmez. Her agent
-kendi domain'ini ve rotasini kendi YAML dosyasindan okur, kararlarini
-bagimsiz verir.
-
-SITL ve XRCE agent surecleri bu dosyanin kapsaminda degildir; onlari
-scripts/start_all.sh baslatir.
-"""
+"""üç aracın düğümünü aynı anda başlatır"""
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
-VEHICLE_IDS = (1, 2, 3)
+VEHICLE_IDS = (1, 2, 3)  # başlatılacak araç kimlikleri
 
 
 def generate_launch_description() -> LaunchDescription:
+    """üç araç için başlatma tanımını üretir"""
     config_dir = os.path.join(get_package_share_directory("oasy_bringup"), "config")
 
     return LaunchDescription([

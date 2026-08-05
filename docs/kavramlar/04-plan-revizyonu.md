@@ -6,12 +6,12 @@ Plan, rüzgâr bilinmeden kurulur. Sonra rüzgâr öğrenilir. Plan ne olacak?
 
 Sorun şu: **taahhüt anında kimse rüzgârı bilmiyor.** Öncü henüz havalanmamıştır,
 dolayısıyla hiçbir ölçüm yoktur. Rüzgârsız hesaplanan uçuş süresi fazla
-iyimserdir — gerçek uçuş daha uzun sürer. Bütün takvim sıkışır.
+iyimserdir, gerçek uçuş daha uzun sürer. Bütün takvim sıkışır.
 
 Sezgi: Üç kişiye "yürüyüş 40 dakika sürer" deyip 20'şer dakika arayla
 çıkardınız. Yolda yokuş olduğunu fark ettiniz; gerçekte 55 dakika sürüyor.
 Şimdi herkesin varış hedefini **ileri** çekmelisiniz. Ama sakın geri
-çekmeyin — yola çıkmış olan zaten geç kalacak, ona daha erken bir hedef vermek
+çekmeyin, yola çıkmış olan zaten geç kalacak, ona daha erken bir hedef vermek
 onu imkânsız bir işe koşmaktır.
 
 İki kural:
@@ -20,7 +20,7 @@ onu imkânsız bir işe koşmaktır.
 - **Yalnızca öncü kendi ölçümünden düzeltir.** Takipçiler öncünün kaymasını
   izler.
 
-İkinci kural sezgiye aykırı görünüyor — "herkes kendi ölçümünü kullansa daha
+İkinci kural sezgiye aykırı görünüyor, "herkes kendi ölçümünü kullansa daha
 iyi olmaz mı?" Denendi, geri alındı. Nedeni [§2](#2-neden-var-hangi-problemi-çözüyor)'de.
 
 ## 2. Neden Var? Hangi Problemi Çözüyor?
@@ -39,7 +39,7 @@ t=168s  HA-3 kalkar
 
 Rüzgâr ilk kez öğrenildiğinde HA-1 çoktan havada, HA-2 kalkmak üzere. Plan
 düzeltilmezse hepsi iyimser bir takvimle uçar ve hatayı havada kapatmaya
-çalışır — kapatamazlar.
+çalışır, kapatamazlar.
 
 ### Neden takipçi kendi ölçümünü kullanmıyor
 
@@ -52,7 +52,7 @@ Bu, **denenip geri alınan** bir tasarımdır ve gerekçesi kodda kayıtlıdır:
 
 **Ölçülen sonuç** (`run_20260802_015849`): HA-2 tırmanışta 6.3 m/s @ 24°
 ölçtü, nominal süresini 538 → **728 s** yaptı. HA-2 − HA-1 arası **105 saniyeye**
-çıktı — 20 saniyelik şartın beş katı.
+çıktı, 20 saniyelik şartın beş katı.
 
 Tırmanış sırasındaki rüzgâr kestiriminin neden sapmalı olduğu
 [06 - Rüzgâr Kestirimi](06-ruzgar-kestirimi.md)'nde: gövde→ENU dönüşünde pitch
@@ -66,7 +66,7 @@ kontrolcü kalıcı olarak doygun kalır.
 
 ## 3. Nasıl Çalışır? (Adım Adım)
 
-### Öncü dalı — tek seferlik
+### Öncü dalı tek seferlik
 
 ```python
 if self._is_leader():
@@ -87,10 +87,10 @@ if self._is_leader():
 `_plan_revised` bayrağı kritiktir. Her tick düzeltme yapılsaydı plan rüzgâr
 gürültüsüyle sürekli ileri kayar, hiç sabitlenmezdi.
 
-Düzeltilmiş varış, **gerçek kalkış anına** eklenir — planlanan kalkışa değil.
+Düzeltilmiş varış, **gerçek kalkış anına** eklenir, planlanan kalkışa değil.
 Arm süresindeki belirsizlik böylece soğurulur.
 
-### Takipçi dalı — öncüyü izle
+### Takipçi dalı öncüyü izle
 
 ```python
 else:
@@ -103,9 +103,9 @@ else:
 ```
 
 Takipçi kendi rüzgârını hiç kullanmaz. Öncünün taahhüdü kaydıkça kendi hedefi
-de kayar — zincir korunur.
+de kayar, zincir korunur.
 
-### Uygulama — tek yönlü mandal
+### Uygulama tek yönlü mandal
 
 ```python
 def _revise_plan_later(self, revised_ns: int, reason: str) -> None:
@@ -133,7 +133,7 @@ $$T_1^{\text{yeni}} = t_{\text{kalkış,gerçek}} + t_{\text{uçuş}}(\vec{w}_{\
 
 $$T_i^{\text{yeni}} = \max_{j<i}\left(T_j^{\text{taahhüt}} + 20(i-j)\right)$$
 
-Öncünün kayması $\delta$ ise takipçilerin hedefi de $\delta$ kadar kayar —
+Öncünün kayması $\delta$ ise takipçilerin hedefi de $\delta$ kadar kayar
 ayrım korunur.
 
 ### Tek yönlülük
@@ -236,7 +236,7 @@ Gerçek kalkış ~2 s olduğuna göre aday ≈ 505 s. Mevcut plan 533 s.
 $$505 \le 533 \;\Longrightarrow\; \text{GERİ GİTMEZ, plan değişmez}$$
 
 **Tek yönlü mandal tam burada devreye giriyor.** Rüzgâr işimize yaradığı halde
-planı öne almıyoruz — çünkü HA-2 ve HA-3 zaten 553 ve 573'e göre kalkış
+planı öne almıyoruz, çünkü HA-2 ve HA-3 zaten 553 ve 573'e göre kalkış
 slotlarını kurdular. Öncü planını öne alsaydı zincir kopar, takipçiler geç
 kalırdı.
 
@@ -253,7 +253,7 @@ olduğu için bu düzeltme **plana değil kalkış slotuna** yansıyor: slot 13 
 **Sonuç:** Plan sabit kaldı, kalkış slotları rüzgâra göre ayarlandı ve varış
 sapmaları −0.11 / +0.17 s oldu.
 
-**Karşı örnek — geri alınan tasarım.** `run_20260802_015849` koşusunda takipçiye
+**Karşı örnek, geri alınan tasarım.** `run_20260802_015849` koşusunda takipçiye
 de kendi ölçümüne dayalı düzeltme verilmişti:
 
 | | Değer |
@@ -285,7 +285,7 @@ Bu iki mesaj zincirin iki ucunu gösterir: öncü kendi ölçümünden, takipçi
   ölçülmüş ve pahalıya mal olmuş bir zayıflıktır; şu anki çözüm düzeltmeyi
   öncüye sınırlamaktır, sorunu ortadan kaldırmak değil.
 - **Geri alınamaz.** Rüzgâr uçuş ortasında lehe dönerse plan hâlâ eski
-  pesimist değerde kalır. Fazla bekleme üretir ama sırayı bozmaz — bilinçli
+  pesimist değerde kalır. Fazla bekleme üretir ama sırayı bozmaz, bilinçli
   bir asimetri.
 - **Öncüye tek nokta bağımlılık.** HA-1'in kestirimi kötüyse hata zincirin
   tamamına yayılır. Merkeziyetsizlik iddiasının en zayıf noktası burasıdır:
@@ -306,7 +306,7 @@ Bu iki mesaj zincirin iki ucunu gösterir: öncü kendi ölçümünden, takipçi
 
 ## 11. Kod Örneği
 
-Geri alınan tasarımın gerekçesi — kodda kalıcı kayıt:
+Geri alınan tasarımın gerekçesi, kodda kalıcı kayıt:
 
 ```python
 """Ruzgar ogrenilince plani ileri ceker; asla one almaz.
@@ -338,13 +338,13 @@ with self._lock:
 
 ## 12. İlgili Kavramlar
 
-- [05 - Kalkış Slotu](05-kalkis-slotu-ve-yer-gecikmesi.md) — yerdeki aracın sürekli düzeltmesi; bu sayfanın karşıtı.
-- [02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md) — planın uçuş boyunca ayarlanması.
-- [06 - Rüzgâr Kestirimi](06-ruzgar-kestirimi.md) — tırmanışta sapma sorununun kaynağı.
-- [03 - Peer Yönetimi](03-peer-yonetimi-ve-tazelik.md) — takipçinin izlediği taahhüt verisi.
+- [05 - Kalkış Slotu](05-kalkis-slotu-ve-yer-gecikmesi.md) yerdeki aracın sürekli düzeltmesi; bu sayfanın karşıtı.
+- [02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md) planın uçuş boyunca ayarlanması.
+- [06 - Rüzgâr Kestirimi](06-ruzgar-kestirimi.md) tırmanışta sapma sorununun kaynağı.
+- [03 - Peer Yönetimi](03-peer-yonetimi-ve-tazelik.md) takipçinin izlediği taahhüt verisi.
 
 ## 13. Kaynaklar
 
-- Kod yorumu, `mission_manager.py:815` — geri alınan takipçi düzeltmesinin ölçülmüş gerekçesi.
-- Koşu `run_20260802_015849` — 105 saniyelik başarısızlığın kaydı.
-- Doğrulama koşusu `logs/run_20260804_172043` — çalışan düzeltmenin log satırları.
+- Kod yorumu, `mission_manager.py:815` geri alınan takipçi düzeltmesinin ölçülmüş gerekçesi.
+- Koşu `run_20260802_015849` 105 saniyelik başarısızlığın kaydı.
+- Doğrulama koşusu `logs/run_20260804_172043` çalışan düzeltmenin log satırları.

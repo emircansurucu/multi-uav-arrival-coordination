@@ -31,7 +31,7 @@ sonucu** hesaplıyor.
 ### Ortak çıpa
 
 Her araç "en erken ne zaman varabilirim" değerini ($E_i$) yayınlar. Ortak zaman
-referansı — **çıpa** — herkesin bu değerinden türetilir:
+referansı, **çıpa**, herkesin bu değerinden türetilir:
 
 $$A = \max_i \left( E_i - 20\,(i-1) \right), \qquad T_i = A + 20\,(i-1)$$
 
@@ -65,7 +65,7 @@ Sistem, zaman kazanma yetkisi **giderek daralan** dört katmandan oluşur:
 | **Hız kontrolü** | ±%20 civarı | her yerde | düşük |
 
 Tasarım ilkesi: **düzeltmeyi mümkün olan en ucuz katmanda yap.** Ölçülen sonuç
-bunu doğruluyor — sakin ve değişken rüzgâr senaryolarında havada bekleme
+bunu doğruluyor, sakin ve değişken rüzgâr senaryolarında havada bekleme
 **sıfır**, tüm bekleme yerde.
 
 ```
@@ -144,7 +144,7 @@ mevcut olan en uygun kanaldan gider.
 
 ## 1.6 Domain Ayrımı
 
-AP_DDS konu adları araç bazında ön ek almaz — üç araç da `/ap/twist/filtered`
+AP_DDS konu adları araç bazında ön ek almaz, üç araç da `/ap/twist/filtered`
 yayınlar. Aynı ağda olsalardı telemetri karışırdı.
 
 Çözüm: **araç başına ayrı DDS domaini** (1, 2, 3) ve **ortak koordinasyon

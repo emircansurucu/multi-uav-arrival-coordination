@@ -1,8 +1,4 @@
-"""ETA tahmin edicisi testleri.
-
-Senaryolar gercek HA-1 rotasi uzerinde kurulur; ruzgar etkisi, hiz
-vektorunu rota dogrultusundan saptirarak temsil edilir.
-"""
+"""rota mesafesi rota noktası ilerlemesi ve eta hesabını sınar"""
 import math
 
 import pytest
@@ -14,7 +10,7 @@ from oasy_uav_agent.estimation.geodesy import (
     to_local_xy,
 )
 
-HA1_HOME = LatLon(47.530002, -122.302457)
+HA1_HOME = LatLon(47.530002, -122.302457)  # ha1 başlangıç konumu
 HA1_ROUTE = [
     LatLon(47.556939, -122.295004),
     LatLon(47.565332, -122.265617),
@@ -22,30 +18,33 @@ HA1_ROUTE = [
     LatLon(47.564550, -122.230073),
     LatLon(47.543977, -122.240829),
     LatLon(47.535683, -122.228584),
-]
-HA1_ROUTE_LENGTH_M = 12205
-SECOND_NS = 1_000_000_000
+]  # ha1 test rotası
+HA1_ROUTE_LENGTH_M = 12205  # ha1 rotasının yaklaşık uzunluğu
+SECOND_NS = 1_000_000_000  # saniyedeki nanosaniye sayısı
 
 
 def make_estimator() -> EtaEstimator:
+    """ha1 rotasıyla bir test eta kestiricisi oluşturur"""
     return EtaEstimator(HA1_ROUTE, HA1_HOME)
 
 
 def velocity_towards(origin: LatLon, destination: LatLon, speed_mps: float):
-    """origin'den destination'a dogru, verilen buyuklukte ENU hiz vektoru."""
+    """iki konum arasında verilen büyüklükte enu hız vektörü üretir"""
     east, north = to_local_xy(destination, origin)
     norm = math.hypot(east, north)
     return (speed_mps * east / norm, speed_mps * north / norm)
 
 
 def test_baslangicta_kalan_mesafe_rota_uzunlugu():
+    """başlangıçtaki kalan mesafenin rota uzunluğuna eşit olmasını sınar"""
     estimator = make_estimator()
     result = estimator.update(HA1_HOME, velocity_towards(HA1_HOME, HA1_ROUTE[0], 20.0), 0)
     assert result.remaining_distance_m == pytest.approx(HA1_ROUTE_LENGTH_M, abs=20)
 
 
 def test_kalan_mesafe_duz_cizgiden_buyuk():
-    # Duz cizgi 5598 m; rota takibi zorunlulugu ETA'yi iki katina cikariyor.
+    """rota mesafesinin hedefe düz mesafeden büyük olmasını sınar"""
+    # rota mesafesi düz çizgiden daha uzun olmalı
     estimator = make_estimator()
     result = estimator.update(HA1_HOME, (0.0, 20.0), 0)
     duz_cizgi = geodesic_distance_m(HA1_HOME, HA1_ROUTE[-1])
@@ -53,6 +52,7 @@ def test_kalan_mesafe_duz_cizgiden_buyuk():
 
 
 def test_sabit_hizda_eta_rota_suresine_yakin():
+    """sabit hız eta değerinin rota süresine yakın olmasını sınar"""
     estimator = make_estimator()
     hiz = velocity_towards(HA1_HOME, HA1_ROUTE[0], 22.9)
     result = estimator.update(HA1_HOME, hiz, 0)
@@ -60,6 +60,7 @@ def test_sabit_hizda_eta_rota_suresine_yakin():
 
 
 def test_waypoint_yaricapa_girince_ilerler():
+    """rota noktası yarıçapına girince aktif indeksin ilerlemesini sınar"""
     estimator = make_estimator()
     estimator.update(HA1_HOME, (0.0, 20.0), 0)
     assert estimator.active_index == 0
@@ -68,8 +69,8 @@ def test_waypoint_yaricapa_girince_ilerler():
 
 
 def test_kose_kesilse_bile_ilerler():
-    # Waypoint'in 400 m yanindan ama duzlemini asarak gecis: yaricap kosulu
-    # tetiklenmez, iz-boyu kosulu tetiklenmeli.
+    """köşe kesildiğinde aktif indeksin bacak ilerlemesiyle değişmesini sınar"""
+    # uzaktan geçilen rota noktası bacak ilerlemesiyle aşılmalı
     estimator = make_estimator()
     estimator.update(HA1_HOME, (0.0, 20.0), 0)
     yan_gecis = LatLon(HA1_ROUTE[0].lat + 0.004, HA1_ROUTE[0].lon + 0.004)
@@ -79,6 +80,7 @@ def test_kose_kesilse_bile_ilerler():
 
 
 def test_aktif_indeks_geri_gitmez():
+    """aktif rota indeksinin eski konumla gerilememesini sınar"""
     estimator = make_estimator()
     estimator.update(HA1_ROUTE[2], (0.0, 20.0), 0)
     ileri = estimator.active_index
@@ -87,7 +89,7 @@ def test_aktif_indeks_geri_gitmez():
 
 
 def test_hedefte_indeks_durur():
-    """Rota bitince indeks son waypoint'te doyar, tasmaz."""
+    """rota bitince indeksin son noktada kalmasını sınar"""
     estimator = make_estimator()
     for index, waypoint in enumerate(HA1_ROUTE):
         estimator.update(waypoint, (0.0, 20.0), index * SECOND_NS)
@@ -99,22 +101,18 @@ def test_hedefte_indeks_durur():
 
 
 def test_telemetri_boslugunda_atlanan_waypointler_toplu_ilerler():
-    """Kesinti sirasinda birden fazla waypoint gecilirse indeks toplu ilerlemeli.
-
-    Iz-boyu kosulu kalicidir: arac ileri gittigi surece oran 1.0'in ustunde
-    kalir, dolayisiyla kacirilan gecis bir sonraki ornekte yakalanir.
-    """
+    """kesintide geçilen rota noktalarının tek adımda ilerlemesini sınar"""
     estimator = make_estimator()
     estimator.update(HA1_HOME, (0.0, 20.0), 0)
     assert estimator.active_index == 0
 
-    # 10 saniyelik kesinti sonrasi arac ucuncu bacaga gecmis durumda.
+    # araç kesinti sonrasında üçüncü bacakta
     estimator.update(HA1_ROUTE[2], (0.0, 20.0), 10 * SECOND_NS)
     assert estimator.active_index == 3
 
 
 def test_karsi_ruzgar_etayi_uzatir():
-    """Ayni konumda dusuk yer hizi daha uzun ETA vermeli."""
+    """düşük yer hızının daha uzun eta vermesini sınar"""
     hedefe = lambda hiz: velocity_towards(HA1_HOME, HA1_ROUTE[0], hiz)  # noqa: E731
     normal = make_estimator().update(HA1_HOME, hedefe(22.9), 0)
     karsi_ruzgar = make_estimator().update(HA1_HOME, hedefe(14.0), 0)
@@ -122,6 +120,7 @@ def test_karsi_ruzgar_etayi_uzatir():
 
 
 def test_arka_ruzgar_etayi_kisaltir():
+    """yüksek yer hızının eta değerini kısaltmasını sınar"""
     hedefe = lambda hiz: velocity_towards(HA1_HOME, HA1_ROUTE[0], hiz)  # noqa: E731
     normal = make_estimator().update(HA1_HOME, hedefe(22.9), 0)
     arka_ruzgar = make_estimator().update(HA1_HOME, hedefe(30.0), 0)
@@ -129,7 +128,7 @@ def test_arka_ruzgar_etayi_kisaltir():
 
 
 def test_yan_ruzgar_ilerleme_hizini_dusurur():
-    """Rotaya dik hiz bileseni hedefe yaklastirmaz."""
+    """rotaya dik hızın ilerleme sayılmamasını sınar"""
     ileri = velocity_towards(HA1_HOME, HA1_ROUTE[0], 22.9)
     dik = (-ileri[1], ileri[0])
     result = make_estimator().update(HA1_HOME, dik, 0)
@@ -137,7 +136,7 @@ def test_yan_ruzgar_ilerleme_hizini_dusurur():
 
 
 def test_hedeften_uzaklasirken_eta_patlamaz():
-    """Negatif ilerleme hizinda alt sinir devreye girer."""
+    """negatif ilerleme hızında alt sınırın uygulanmasını sınar"""
     geri = velocity_towards(HA1_ROUTE[0], HA1_HOME, 22.9)
     result = make_estimator().update(HA1_HOME, geri, 0)
     assert math.isfinite(result.eta_s)
@@ -145,17 +144,18 @@ def test_hedeften_uzaklasirken_eta_patlamaz():
 
 
 def test_hiz_filtresi_ani_sicramayi_yumusatir():
+    """hız filtresinin ani ölçüm değişikliğini yumuşatmasını sınar"""
     estimator = make_estimator()
     hiz = velocity_towards(HA1_HOME, HA1_ROUTE[0], 22.9)
     estimator.update(HA1_HOME, hiz, 0)
-    # 0.2 s sonra hiz yariya duserse filtrelenmis deger araya dusmeli.
+    # hız yarıya düşünce filtrelenmiş değer arada kalmalı
     dusuk = velocity_towards(HA1_HOME, HA1_ROUTE[0], 11.0)
     result = estimator.update(HA1_HOME, dusuk, SECOND_NS // 5)
     assert 11.0 < result.progress_speed_mps < 22.9
 
 
 def test_telemetri_kesintisi_sonrasi_filtre_devam_eder():
-    """Uzun bosluktan sonra filtre yeni degere hizla yakinsamali."""
+    """uzun aradan sonra filtrenin yeni hıza yaklaşmasını sınar"""
     estimator = make_estimator()
     hizli = velocity_towards(HA1_HOME, HA1_ROUTE[0], 22.9)
     estimator.update(HA1_HOME, hizli, 0)
@@ -165,6 +165,7 @@ def test_telemetri_kesintisi_sonrasi_filtre_devam_eder():
 
 
 def test_rota_ilerledikce_kalan_mesafe_azalir():
+    """rota boyunca ilerlerken kalan mesafenin düzenli azalmasını sınar"""
     estimator = make_estimator()
     hiz = (0.0, 20.0)
     onceki = estimator.update(HA1_HOME, hiz, 0).remaining_distance_m
@@ -176,5 +177,6 @@ def test_rota_ilerledikce_kalan_mesafe_azalir():
 
 
 def test_bos_rota_reddedilir():
+    """boş rota ile eta kestiricisi oluşturulamamasını sınar"""
     with pytest.raises(ValueError):
         EtaEstimator([], HA1_HOME)

@@ -7,7 +7,7 @@ kullanmalı?
 
 Naif cevap: "hatayı gör, düzelt." Ama bu bir tuzağa düşürür. Araç biraz erkense
 yavaşlar; yavaşladıkça hız tabanına yaklaşır; tabana yapıştığında **hiçbir
-yetkisi kalmaz.** Sonra rüzgâr döner ve daha da erken kalır — yapabileceği bir
+yetkisi kalmaz.** Sonra rüzgâr döner ve daha da erken kalır, yapabileceği bir
 şey yoktur.
 
 Sezgi: Dar bir yolda araba sürüyorsun ve frenin sınırlı. Erken varacaksan
@@ -47,13 +47,13 @@ yavasla | zamanlama hatasi -12.2 s | gerekli 13.0 m/s | komut 15.7 m/s
         | rate_limit=True | rezerv erken/gec -12.2/+12.3 s
 ```
 
-`rezerv erken/gec -12.2` — **negatif**. Yani araç kalan yolu asgari hızda uçsa
+`rezerv erken/gec -12.2`, **negatif**. Yani araç kalan yolu asgari hızda uçsa
 bile plandan 12.2 saniye erken varacak. Kontrolcü doğru olanı yapıyor
 (`yavasla`, `gerekli 13.0`) ama yetki yok. Rezerv bunu **önceden** görmeliydi.
 
 ## 3. Nasıl Çalışır? (Adım Adım)
 
-### Adım 1 — Ön koşullar
+### Adım 1 Ön koşullar
 
 ```python
 if (
@@ -67,9 +67,9 @@ if (
     return None, None
 ```
 
-Rezerv yalnızca kapıdan sonra anlamlıdır — öncesinde bekleme yetkisi var.
+Rezerv yalnızca kapıdan sonra anlamlıdır, öncesinde bekleme yetkisi var.
 
-### Adım 2 — İki uç senaryoyu hesapla
+### Adım 2 İki uç senaryoyu hesapla
 
 ```python
 fast_s = route_duration_with_airspeed_ramp_s(
@@ -82,10 +82,10 @@ slow_s = route_duration_with_airspeed_ramp_s(
 )
 ```
 
-**Rampalı** sürüm kullanılır — hıza anında geçilemez, rate limit modele girer.
+**Rampalı** sürüm kullanılır, hıza anında geçilemez, rate limit modele girer.
 Anlık geçiş varsayılsaydı yetki iyimser görünürdü.
 
-### Adım 3 — Rezervleri türet
+### Adım 3 Rezervleri türet
 
 ```python
 target_in_s = (self._planned_arrival_ns - now_ns) / 1e9
@@ -93,7 +93,7 @@ late_reserve_s  = target_in_s - fast_s    # en hizli uçsam ne kadar payim var
 early_reserve_s = slow_s - target_in_s    # en yavas uçsam ne kadar payim var
 ```
 
-### Adım 4 — Mod seç (histerezisli)
+### Adım 4 Mod seç (histerezisli)
 
 ```python
 early_low = early_reserve_s < TERMINAL_EARLY_RESERVE_S   # 18 s
@@ -113,7 +113,7 @@ else:
     self._reserve_mode = None
 ```
 
-### Adım 5 — Hızı zorla
+### Adım 5 Hızı zorla
 
 ```python
 if self._reserve_mode == "slow":
@@ -123,7 +123,7 @@ if self._reserve_mode == "fast":
 ```
 
 Bu değer kontrolcüye `forced_airspeed_mps` olarak geçer ve **ölü bandı, oran
-hesabını ve son saniye kapısını atlar** — ama rate limit korunur.
+hesabını ve son saniye kapısını atlar**, ama rate limit korunur.
 
 ## 4. Matematiksel Temel
 
@@ -241,10 +241,10 @@ flowchart TD
 | Parametre | Değer | Etki |
 |---|---|---|
 | `TERMINAL_EARLY_RESERVE_S` | **18 s** | Erken rezerv eşiği. Yüksek tutulmuş: erken varmak sırayı bozar. |
-| `TERMINAL_LATE_RESERVE_S` | **10 s** | Geç rezerv eşiği. Daha düşük — geç kalmak daha az zararlı. |
+| `TERMINAL_LATE_RESERVE_S` | **10 s** | Geç rezerv eşiği. Daha düşük geç kalmak daha az zararlı. |
 | `TERMINAL_RESERVE_HYSTERESIS_S` | 2 s | Mod titremesini engeller. Eşiğe geri dönerken 2 s pay bırakılır. |
 
-**Ayar ipucu:** Erken rezerv eşiğini yükseltmek aracı daha erken yavaşlatır —
+**Ayar ipucu:** Erken rezerv eşiğini yükseltmek aracı daha erken yavaşlatır
 güvenli ama daha çok "yavaş uçma" süresi. Düşürmek yetkinin tükenme riskini
 artırır. 18 s, son bacaktaki toplam yetkinin (~24 s kuyruk rüzgârında) yaklaşık
 %75'i.
@@ -258,14 +258,14 @@ komut edilen hız 16.8 m/s.
 
 **İki uç senaryo** (rampa dahil, 1.5 m/s²):
 
-Azami hıza (28 m/s) çıkış — mevcut 16.8'den 11.2 m/s artış, $11.2/1.5 = 7.5$ s
+Azami hıza (28 m/s) çıkış, mevcut 16.8'den 11.2 m/s artış, $11.2/1.5 = 7.5$ s
 rampa. Ama kalan mesafe zaten kısa; rampa tamamlanmadan varılır. Yaklaşık
 ortalama yer hızı:
 
 $$\bar v_{\text{hızlı}} \approx \frac{16.8 + 22}{2} + 9.08 \approx 28.5\ \text{m/s}
 \;\Rightarrow\; t_{\text{hızlı}} \approx \frac{352}{28.5} = 12.4\ \text{s}$$
 
-Asgari hıza (13 m/s) iniş — 3.8 m/s azalış, 2.5 s rampa:
+Asgari hıza (13 m/s) iniş, 3.8 m/s azalış, 2.5 s rampa:
 
 $$\bar v_{\text{yavaş}} \approx 13.5 + 9.08 = 22.6\ \text{m/s}
 \;\Rightarrow\; t_{\text{yavaş}} \approx \frac{352}{22.6} = 15.6\ \text{s}$$
@@ -275,7 +275,7 @@ $$\bar v_{\text{yavaş}} \approx 13.5 + 9.08 = 22.6\ \text{m/s}
 $$t_{\text{yavaş}} - t_{\text{hızlı}} = 15.6 - 12.4 = \mathbf{3.2\ s}$$
 
 352 metre kala elimizde **yalnızca 3.2 saniyelik** hız yetkisi var. Eşikler
-18 s ve 10 s olduğuna göre **ikisi de tükenmiş** durumda — rezerv modu gerçek
+18 s ve 10 s olduğuna göre **ikisi de tükenmiş** durumda, rezerv modu gerçek
 hatanın yönüne basar.
 
 **Bu yüzden erkenlik son bacağa girmeden kapatılmalıdır.** Rezerv bariyeri son
@@ -288,12 +288,12 @@ erkenden** görüp önlem almaktır.
 kalan 232 m | hata +7.1 s | komut 13.0 | yer hizi 3.9 | rezerv -12.2/+12.3
 ```
 
-`ρ_erken = -12.2` — negatif. Araç asgari hızda uçsa bile 12.2 s erken varacak.
+`ρ_erken = -12.2`, negatif. Araç asgari hızda uçsa bile 12.2 s erken varacak.
 Rezerv bunu görüyor ve asgari hızı zorluyor, ama **matematiksel olarak
 çözümsüz** bir durum.
 
 **Başarılı koşuda** (yeni profil, `run_20260804_153014`) araç son yaklaşmada
-16.8 m/s komut ediyordu — tabanda değil. Yani rezerv sistemi yetkinin bir
+16.8 m/s komut ediyordu, tabanda değil. Yani rezerv sistemi yetkinin bir
 kısmını korumayı başarmıştı:
 
 $$\text{kalan yetki} = 16.8 - 13.0 = 3.8\ \text{m/s}$$
@@ -343,7 +343,7 @@ rezerv, o yönde çaresizlik demektir.
 | Rezerv hesabı | [`mission_manager.py:1163` `_terminal_reserve_override`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/mission_manager.py#L1163) |
 | Rampalı süre | [`wind_estimator.py:184` `route_duration_with_airspeed_ramp_s`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/estimation/wind_estimator.py#L184) |
 | Kontrolcüye aktarım | [`mission_manager.py:1237` `_regulate_speed`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/mission_manager.py#L1237) |
-| Zorlamanın işlenmesi | [`arrival_controller.py`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/control/arrival_controller.py) — `forced_airspeed_mps` |
+| Zorlamanın işlenmesi | [`arrival_controller.py`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/control/arrival_controller.py) `forced_airspeed_mps` |
 
 ## 11. Kod Örneği
 
@@ -353,8 +353,8 @@ Mod seçimi ve her iki rezerv de tükendiğinde ne yapıldığı:
 early_low = early_reserve_s < TERMINAL_EARLY_RESERVE_S
 late_low = late_reserve_s < TERMINAL_LATE_RESERVE_S
 if early_low and late_low:
-    # Secilen ruzgar modeli altinda pencere gecici olarak bos. Gercek
-    # zamanlama hatasinin yonune gore kurtarilabilir tarafa basilir.
+    # pencere geçici olarak boş; gerçek hatanın yönüne göre kurtarılabilir
+    # tarafa basılır
     self._reserve_mode = "fast" if self._timing_error_s() > 0.0 else "slow"
 elif early_low:
     self._reserve_mode = "slow"
@@ -364,14 +364,14 @@ elif late_low:
 
 ## 12. İlgili Kavramlar
 
-- [11 - Varış Zamanı Kontrolcüsü](11-varis-zamani-kontrolcusu.md) — zorlamanın uygulandığı yer.
-- [12 - Son Yasal Kapı](12-son-yasal-kapi.md) — rezervin devreye girdiği andan önceki katman.
-- [07 - Rüzgâr Düzeltmeli Rota Süresi](07-ruzgar-duzeltmeli-rota-suresi.md) — rampalı sürümün temeli.
-- [14 - Robust E/L Sınırları](14-robust-e-l-sinirlari.md) — benzer mantığın rota geneline uygulanması.
+- [11 - Varış Zamanı Kontrolcüsü](11-varis-zamani-kontrolcusu.md) zorlamanın uygulandığı yer.
+- [12 - Son Yasal Kapı](12-son-yasal-kapi.md) rezervin devreye girdiği andan önceki katman.
+- [07 - Rüzgâr Düzeltmeli Rota Süresi](07-ruzgar-duzeltmeli-rota-suresi.md) rampalı sürümün temeli.
+- [14 - Robust E/L Sınırları](14-robust-e-l-sinirlari.md) benzer mantığın rota geneline uygulanması.
 
 ## 13. Kaynaklar
 
-- Vaka belgesi madde 6: 2 km içinde loiter yasağı — rezervin neden tek çare
+- Vaka belgesi madde 6: 2 km içinde loiter yasağı rezervin neden tek çare
   olduğunun gerekçesi.
 - Ölçüm: `logs/run_20260804_153014` (başarılı) ve `run_20260804_110145`
   (negatif rezerv imzası).

@@ -6,14 +6,14 @@
 
 Araç bir varış anına taahhüt etmiş durumda. Her tick'te iki sayı karşılaştırılır:
 
-- **ETA** — mevcut hızla ne kadar sürede varırım
-- **Kalan süre** — plana göre ne kadar zamanım var
+- **ETA** mevcut hızla ne kadar sürede varırım
+- **Kalan süre** plana göre ne kadar zamanım var
 
 İkisi eşitse her şey yolunda. ETA daha büyükse geç kalacağım, hızlanmalıyım.
 Daha küçükse erken varacağım, yavaşlamalıyım.
 
 Sezgi: Randevuya arabayla gidiyorsun. Navigasyon "17:05'te varırsın" diyor,
-randevu 17:00. Beş dakika geç kalacaksın — gaza basarsın. Ama gaz pedalının
+randevu 17:00. Beş dakika geç kalacaksın, gaza basarsın. Ama gaz pedalının
 sınırı var (azami hız), fren de sınırlı (asgari hız), ve arabanın hızlanması
 zaman alır (rate limit). Üç sınırın üçü de bu kontrolcüde var.
 
@@ -41,7 +41,7 @@ Dört koruma katmanı içerir ve her biri gerçek bir başarısızlığı önler
 
 ## 3. Nasıl Çalışır? (Adım Adım)
 
-### Adım 1 — Son saniye kapısı
+### Adım 1 Son saniye kapısı
 
 ```python
 if remaining_time_s < MIN_REMAINING_TIME_S and forced_airspeed_mps is None:
@@ -53,11 +53,11 @@ Varışa 15 saniyeden az kaldığında oran hesabı sayısal olarak patlar: payd
 bırakılır.
 
 **İstisna:** terminal rezerv bariyeri açık bir hız zorluyorsa
-(`forced_airspeed_mps`), kapı onu geçirir — çünkü o zorlama oran hesabından
+(`forced_airspeed_mps`), kapı onu geçirir, çünkü o zorlama oran hesabından
 değil, ulaşılabilirlik sınırından gelir
 ([13 - Terminal Rezerv](13-terminal-rezerv.md)).
 
-### Adım 2 — Zamanlama hatası ve ölü bant
+### Adım 2 Zamanlama hatası ve ölü bant
 
 $$e = \text{ETA} - t_{\text{kalan}}$$
 
@@ -68,7 +68,7 @@ if forced_airspeed_mps is None and abs(timing_error_s) <= self._deadband_s:
     return SpeedCommand(action=ControlAction.HOLD, ...)
 ```
 
-### Adım 3 — Gerekli hız
+### Adım 3 Gerekli hız
 
 ```python
 required_mps = self._commanded_mps * (eta_s / remaining_time_s)
@@ -76,17 +76,17 @@ required_mps = self._commanded_mps * (eta_s / remaining_time_s)
 
 Oran mantığı: ETA kalan sürenin 1.1 katıysa, %10 daha hızlı uçmam gerekir.
 
-### Adım 4 — Doygunluk (uçuş zarfı)
+### Adım 4 Doygunluk (uçuş zarfı)
 
 ```python
 target_mps = _clamp(required_mps, self._min_airspeed_mps, self._max_airspeed_mps)
 saturated = not math.isclose(target_mps, required_mps, rel_tol=1e-9)
 ```
 
-13–28 m/s dışına çıkılamaz. `saturated` bayrağı loglanır — "istediğimi
+13-28 m/s dışına çıkılamaz. `saturated` bayrağı loglanır, "istediğimi
 alamıyorum" sinyali, sessizce yutulmaz.
 
-### Adım 5 — Rate limit
+### Adım 5 Rate limit
 
 ```python
 max_delta_mps = self._rate_limit_mps_per_s * max(dt_s, 0.0)
@@ -97,7 +97,7 @@ if abs(delta_mps) > max_delta_mps:
 Hız bir tick'te sıçrayamaz. **Bu parametre bu projede kritik çıktı**, bkz.
 [§6](#6-parametreler-ve-etkileri).
 
-### Adım 6 — Gönderme eşiği
+### Adım 6 Gönderme eşiği
 
 ```python
 changed = abs(self._commanded_mps - self._last_sent_mps) >= MIN_COMMAND_STEP_MPS
@@ -106,7 +106,7 @@ changed = abs(self._commanded_mps - self._last_sent_mps) >= MIN_COMMAND_STEP_MPS
 Karşılaştırma **son gönderilen** değere göre yapılır, bir önceki tick'e göre
 değil. Yorumda not düşülmüş: tick başına rate limit adımı
 $1.5 \times 0.05 = 0.075$ m/s; eşik 0.1 m/s. Bir önceki tick'e göre
-karşılaştırılsaydı **hiçbir komut gönderilmezdi** — her adım eşiğin altında
+karşılaştırılsaydı **hiçbir komut gönderilmezdi**, her adım eşiğin altında
 kalırdı.
 
 ## 4. Matematiksel Temel
@@ -119,7 +119,7 @@ ETA'nın kendisi $D_{\text{kalan}} / v_{\text{yer}}$ olduğundan, sabit rüzgâr
 
 $$v_{\text{gerekli}} \approx \frac{D_{\text{kalan}}}{t_{\text{kalan}}} \cdot \frac{v_{\text{komut}}}{v_{\text{yer}}}$$
 
-İkinci çarpan hava hızı/yer hızı oranıdır — rüzgâr düzeltmesini örtük olarak
+İkinci çarpan hava hızı/yer hızı oranıdır, rüzgâr düzeltmesini örtük olarak
 taşır. ETA model tabanlı hesaplandığı için
 ([07](07-ruzgar-duzeltmeli-rota-suresi.md)) bu oran doğrudur.
 
@@ -151,7 +151,7 @@ mesafesi" vardır.**
 
 Ölü bant $\delta$, ölçüm gürültüsü $\sigma$. $\delta < \sigma$ ise kontrolcü
 gürültüyü kovalar (limit çevrimi). $\delta \gg \sigma$ ise kalıcı hata kalır.
-Seçim $\delta = 0.5$ s, ölçülen ETA gürültüsü ±0.7 s mertebesinde — aynı
+Seçim $\delta = 0.5$ s, ölçülen ETA gürültüsü ±0.7 s mertebesinde, aynı
 büyüklükte, bilinçli.
 
 ## 5. Geometrik/Görsel Sezgi
@@ -244,42 +244,42 @@ altındaki mekanizmaydı.
 **Bağlam:** HA-3 seyirde, hedefe 2504 m kala, komut edilen hız 22.9 m/s,
 model tabanlı ETA 102.4 s, plana göre kalan süre 97.4 s.
 
-**Adım 1 — kapı:** $97.4 > 15$ ✓ geçer.
+**Adım 1, kapı:** $97.4 > 15$ ✓ geçer.
 
-**Adım 2 — hata:**
+**Adım 2, hata:**
 
 $$e = 102.4 - 97.4 = +5.0\ \text{s}$$
 
 Pozitif → **geç kalacağım**. $|5.0| > 0.5$ → ölü bandın dışında.
 
-**Adım 3 — gerekli hız:**
+**Adım 3, gerekli hız:**
 
 $$v_{\text{gerekli}} = 22.9 \times \frac{102.4}{97.4} = 22.9 \times 1.0513 = 24.07\ \text{m/s}$$
 
-**Adım 4 — doygunluk:** $13 \le 24.07 \le 28$ ✓ doygun değil.
+**Adım 4, doygunluk:** $13 \le 24.07 \le 28$ ✓ doygun değil.
 
-**Adım 5 — rate limit:**
+**Adım 5, rate limit:**
 
 $$\Delta v_{\text{istenen}} = 24.07 - 22.90 = +1.17\ \text{m/s}$$
 $$\Delta v_{\text{izin}} = 1.5 \times 0.05 = 0.075\ \text{m/s}$$
 
 $1.17 > 0.075$ → **rate limitli**. Uygulanan: $22.9 + 0.075 = 22.975$ m/s.
 
-**Adım 6 — gönderme:** son gönderilen 22.9 idi, fark 0.075 < 0.1 → **gönderilmez**.
+**Adım 6, gönderme:** son gönderilen 22.9 idi, fark 0.075 < 0.1 → **gönderilmez**.
 Bir sonraki tick'te birikerek 0.15 olur ve gönderilir.
 
 **Yakınsama süresi:**
 
 $$t = \frac{1.17}{1.5} = 0.78\ \text{saniye}$$
 
-Yani hedef hıza 0.78 s'de ulaşılır — 15 tick. Eski 0.5 m/s² değerinde bu
+Yani hedef hıza 0.78 s'de ulaşılır, 15 tick. Eski 0.5 m/s² değerinde bu
 **2.34 saniye** olurdu.
 
 **Hatanın kapanması.** 24.07 m/s'de kalan 2504 m:
 
 $$t_{\text{yeni}} = \frac{2504}{24.07 \times (25.7/22.9)} = \frac{2504}{27.01} = 92.7\ \text{s}$$
 
-Hedeflenen 97.4 s'ye göre 4.7 s erken — kontrolcü bir sonraki tick'te bunu görüp
+Hedeflenen 97.4 s'ye göre 4.7 s erken, kontrolcü bir sonraki tick'te bunu görüp
 komutu geri çeker. Bu, oran kontrolünün doğal davranışıdır: tek adımda tam
 düzeltme değil, kademeli yakınsama.
 
@@ -299,7 +299,7 @@ Komut, hangi sınırlayıcılardan geçtiğini taşır:
 
 Bu bayraklar loglanır. **Tanılama değeri yüksektir**: `required` ile
 `airspeed` arasındaki fark, kontrolcünün ne kadar kısıtlandığını doğrudan
-gösterir — rate limit bulgusu tam bu farktan çıktı.
+gösterir, rate limit bulgusu tam bu farktan çıktı.
 
 ## 9. Sınırlamalar / Yapamayacağı
 
@@ -323,7 +323,7 @@ gösterir — rate limit bulgusu tam bu farktan çıktı.
 | Kontrolcü | [`arrival_controller.py`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/control/arrival_controller.py) |
 | Rate limit | `update()` içinde, `max_delta_mps` hesabı |
 | Çağrı yeri | [`mission_manager.py:1237` `_regulate_speed`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/mission_manager.py#L1237) |
-| Komut gönderimi | [`mavlink_link.py` `set_airspeed`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/autopilot_adapter/mavlink_link.py) — `DO_CHANGE_SPEED` |
+| Komut gönderimi | [`mavlink_link.py` `set_airspeed`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/autopilot_adapter/mavlink_link.py) `DO_CHANGE_SPEED` |
 | Zorlanan hız kaynağı | [`mission_manager.py:1163` `_terminal_reserve_override`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/mission_manager.py#L1163) |
 
 ## 11. Kod Örneği
@@ -349,20 +349,19 @@ if rate_limited:
 Gönderme eşiğinin neden **son gönderilen** değere göre olduğu:
 
 ```python
-# Komut, en son gonderilen degerden bu kadar uzaklastiginda yeniden
-# gonderilir. Karsilastirma bir onceki tick'e gore yapilirsa rate limit
-# adimi (0.5 m/s^2 * 0.05 s = 0.025 m/s) bu esigin altinda kaldigi icin
+# karşılaştırma son gönderilen değere göre yapılır; önceki tick'e göre
+# yapılırsa rate limit adımı eşiğin altında kalıp hiç komut gönderilmezdi
 # hicbir komut gonderilmez.
 MIN_COMMAND_STEP_MPS = 0.1
 ```
 
 ## 12. İlgili Kavramlar
 
-- [08 - ETA ve Kalan Mesafe](08-eta-ve-kalan-mesafe.md) — hata sinyalinin bir yarısı.
-- [07 - Rüzgâr Düzeltmeli Rota Süresi](07-ruzgar-duzeltmeli-rota-suresi.md) — ETA'yı üreten model.
-- [13 - Terminal Rezerv](13-terminal-rezerv.md) — `forced_airspeed_mps`'in kaynağı.
-- [12 - Son Yasal Kapı](12-son-yasal-kapi.md) — hız yetkisi tükendiğinde devreye giren katman.
-- [02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md) — `planned_arrival_monotonic_ns`'i belirleyen katman.
+- [08 - ETA ve Kalan Mesafe](08-eta-ve-kalan-mesafe.md) hata sinyalinin bir yarısı.
+- [07 - Rüzgâr Düzeltmeli Rota Süresi](07-ruzgar-duzeltmeli-rota-suresi.md) ETA'yı üreten model.
+- [13 - Terminal Rezerv](13-terminal-rezerv.md) `forced_airspeed_mps`'in kaynağı.
+- [12 - Son Yasal Kapı](12-son-yasal-kapi.md) hız yetkisi tükendiğinde devreye giren katman.
+- [02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md) `planned_arrival_monotonic_ns`'i belirleyen katman.
 
 ## 13. Kaynaklar
 

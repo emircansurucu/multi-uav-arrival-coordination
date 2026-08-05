@@ -22,7 +22,7 @@ Bu farkı kapatmak için elde dört araç var ve **yetkileri giderek daralır**:
 | Hız kontrolü | ±%20 civarı | her yerde | [11](kavramlar/11-varis-zamani-kontrolcusu.md) |
 
 Belgenin madde 5'inde sayılan dört yöntemden **üçünü** kullanıyoruz. Dördüncüsü
-(S-manevrası) uygulandı, ölçüldü ve kaldırıldı —
+(S-manevrası) uygulandı, ölçüldü ve kaldırıldı
 [04 - Geliştirme ve Testler](04-gelistirme-ve-testler.md#s-manevrası-neden-yok).
 
 ## 3.2 Varış Zamanı Kontrolü
@@ -52,7 +52,7 @@ Ayrıntı: [11 - Varış Zamanı Kontrolcüsü](kavramlar/11-varis-zamani-kontro
 | 0.5 m/s² | **865 / 878 = %98.5** |
 | 1.5 m/s² | 350 / 568 = %62 |
 
-%98.5'te kontrolcü uçuşun neredeyse tamamında istediğini uygulayamıyordu —
+%98.5'te kontrolcü uçuşun neredeyse tamamında istediğini uygulayamıyordu
 kapalı çevrim değil **açık çevrim rampa** gibi çalışıyordu. 28'den 13'e inmek
 0.5 m/s²'de 30 saniye ve ~615 metre sürüyordu.
 
@@ -105,7 +105,7 @@ Ayrıntı: [14 - Robust E/L Sınırları](kavramlar/14-robust-e-l-sinirlari.md)
 Önceki sürüm ETA'yı **ölçülen yer hızına bölerek** hesaplıyordu. Ölçülen hız
 dönüşlerde çöker; ETA ±15 saniye salınıyordu.
 
-Model tabanlı hesaba geçince **salınım ±0.7 s'ye indi** — ve bu tek düzeltme üç
+Model tabanlı hesaba geçince **salınım ±0.7 s'ye indi**, ve bu tek düzeltme üç
 ayrı belirtiyi birden kapattı.
 
 Ders kod yorumlarında kayıtlı: *ölçülen hıza bölmeyin, modeli kullanın.*
@@ -118,11 +118,11 @@ $$A = \max_i \left( E_i - 20(i-1) \right), \qquad T_i = A + 20(i-1)$$
 
 `max` sırasız olduğu için aynı veriyi gören üç araç aynı sonucu bulur.
 
-**Doğrulanmış örnek** — hesap ölçümü yarım saniye içinde öngörüyor:
+**Doğrulanmış örnek**, hesap ölçümü yarım saniye içinde öngörüyor:
 
 | Araç | Hesaplanan yer beklemesi | Ölçülen | Fark |
 |---|---|---|---|
-| HA-1 | 0 s | 0.0 s | — |
+| HA-1 | 0 s | 0.0 s | yok |
 | HA-2 | 15 s | 14.5 s | 0.5 s |
 | HA-3 | 168 s | 168.1 s | **0.1 s** |
 
@@ -133,7 +133,7 @@ Ayrıntı: [02 - Merkeziyetsiz Çıpa](kavramlar/02-merkeziyetsiz-capa.md)
 Belge madde 6: hedefin 2 km çemberi içinde loiter **kesinlikle yasak**.
 
 Ama geometri şunu söylüyor: HA-3 o çembere girdiğinde rota olarak **hâlâ 4307
-metre** kalıyor — rota ilmek atıyor. Ölçülen terminal faz süresi **214 saniye**,
+metre** kalıyor, rota ilmek atıyor. Ölçülen terminal faz süresi **214 saniye**,
 görevin %36'sı.
 
 Yani görevin üçte birinde tek yetki hız. Ve kuyruk rüzgârında hız yetkisi sıfıra
@@ -151,17 +151,17 @@ kısıtıdır.
 
 İki mekanizma bunun için var:
 
-**Son yasal kapı** — erkenliği yasak bölgeye girmeden soğurur. Kapı, rotanın
+**Son yasal kapı**, erkenliği yasak bölgeye girmeden soğurur. Kapı, rotanın
 2500 m çemberine son girişidir; bırakma anı $[T-L, T-E]$ penceresinden
 türetilir.
 
 Ayrıntı: [12 - Son Yasal Kapı](kavramlar/12-son-yasal-kapi.md)
 
-**Terminal rezerv** — hız yetkisinin her iki ucuna kalan payı sürekli ölçer,
+**Terminal rezerv**, hız yetkisinin her iki ucuna kalan payı sürekli ölçer,
 biri tükenmeye başlayınca karşı yöne baskı yapar. Amaç: araç hız tabanına
 yapışmasın, düzeltme yetkisini yedekte tutsun.
 
-Ölçüldü: başarılı koşuda araç son yaklaşmada 16.8 m/s komut ediyordu — tabanda
+Ölçüldü: başarılı koşuda araç son yaklaşmada 16.8 m/s komut ediyordu, tabanda
 değil, 3.8 m/s yavaşlama payı elinde.
 
 Ayrıntı: [13 - Terminal Rezerv](kavramlar/13-terminal-rezerv.md)
@@ -174,7 +174,7 @@ Başarı ölçütü 5 m çemberine giriş anıdır. Telemetri 20 Hz geldiği iç
 | En yakın geçiş | Çemberde kalan kiriş | İçeride kalan örnek |
 |---|---|---|
 | 4.79 m | 2.87 m | ~2 |
-| 4.99 m | 0.63 m | **0–1** |
+| 4.99 m | 0.63 m | **0-1** |
 
 Çözüm: ardışık iki konum arasındaki doğru parçası çemberle kesiştirilip giriş
 anı **interpolasyonla** bulunur.
@@ -206,8 +206,8 @@ Hangi soru hangi sayfada:
 
 ## 3.8 Kullanılmayan Yöntem: S-Manevrası
 
-Madde 5 dört yöntem sayıyor; biz üçünü kullanıyoruz. Dördüncüsü — uçuş yolu
-uzatma — **uygulandı, uçuşta doğrulandı ve kaldırıldı.**
+Madde 5 dört yöntem sayıyor; biz üçünü kullanıyoruz. Dördüncüsü, uçuş yolu
+uzatma, **uygulandı, uçuşta doğrulandı ve kaldırıldı.**
 
 Kısa özet:
 

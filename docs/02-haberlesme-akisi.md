@@ -6,7 +6,7 @@
 
 ## 2.1 Genel Görünüm
 
-Sistemde üç bağımsız süreç var — her araç için bir agent. Aralarında **tek bir
+Sistemde üç bağımsız süreç var, her araç için bir agent. Aralarında **tek bir
 mesaj tipi** dolaşıyor: `VehicleStatus`. Başka koordinasyon kanalı yok.
 
 ```mermaid
@@ -33,7 +33,7 @@ flowchart LR
   A2 -->|"MAVLink komut"| S2
   A3 -->|"MAVLink komut"| S3
 
-  subgraph D10["DDS Domain 10 — koordinasyon"]
+  subgraph D10["DDS Domain 10, koordinasyon"]
     T["/oasy/vehicle_status"]
   end
 
@@ -43,7 +43,7 @@ flowchart LR
 ```
 
 **Kritik ayrım:** hiçbir araç diğerinin ham telemetrisine erişmez. Yalnızca
-yayınlanan **özeti** görür. Bu, merkeziyetsizliğin yapısal garantisidir —
+yayınlanan **özeti** görür. Bu, merkeziyetsizliğin yapısal garantisidir
 bir araç diğerinin verisini "okuyup karar veremez", yalnızca beyan edilene
 güvenir.
 
@@ -84,7 +84,7 @@ olan kanaldan gider:
 
 Son ikisi birlikte rüzgâr kestirimini üretir
 ([06](kavramlar/06-ruzgar-kestirimi.md)). Çerçeve farkı kritik: yer hızı ENU,
-hava hızı gövde — doğrudan çıkarılamazlar.
+hava hızı gövde, doğrudan çıkarılamazlar.
 
 ## 2.4 `VehicleStatus` Paketi
 
@@ -94,12 +94,12 @@ Araçlar arasındaki **tek sözleşme**. Alanlar ve neden var oldukları:
 
 | Alan | Tip | Amaç |
 |---|---|---|
-| `header` | `std_msgs/Header` | Duvar saati — yalnızca kayıt ve video için |
+| `header` | `std_msgs/Header` | Duvar saati yalnızca kayıt ve video için |
 | `vehicle_id` | `uint8` | Üç araç aynı konuya yazar; ayrım budur |
 | `seq` | `uint32` | **Mesaj kaybı bu sayacın atlamalarından ölçülür** |
 | `mission_state` | `uint8` | `STATE_*` sabitleriyle aynı sayılar |
 
-### Zaman — sistemin omurgası
+### Zaman sistemin omurgası
 
 | Alan | Tip | Amaç |
 |---|---|---|
@@ -107,7 +107,7 @@ Araçlar arasındaki **tek sözleşme**. Alanlar ve neden var oldukları:
 | `planned_arrival_monotonic_ns` | `uint64` | Taahhüt edilen varış anı |
 | `arrival_committed` | `bool` | Taahhüt geçerli mi |
 | `earliest_feasible_arrival_monotonic_ns` | `uint64` | Çıpa hesabının girdisi ($E_i$) |
-| `actual_arrival_monotonic_ns` | `uint64` | Gerçekleşen varış — tahmin değil **olgu** |
+| `actual_arrival_monotonic_ns` | `uint64` | Gerçekleşen varış tahmin değil **olgu** |
 | `target_reached` | `bool` | Varış mandalı |
 
 **Neden mutlak an?** Göreli süre mesaj gecikmesiyle anlamını yitirir:
@@ -129,7 +129,7 @@ Mutlak damga bu bozulmadan bağışıktır.
 anlamlı basamak taşır, bu da metre mertebesinde hata demektir. 5 metrelik kabul
 yarıçapıyla çalışan bir sistemde kabul edilemez.
 
-### Rüzgâr — sürünün ortak bilgisi
+### Rüzgâr sürünün ortak bilgisi
 
 | Alan | Tip | Amaç |
 |---|---|---|
@@ -154,7 +154,7 @@ qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
 **Neden BEST_EFFORT?** Kod yorumunda: *"Durum yayini yuksek frekansli ve eskiyen
 veri oldugu icin kaybolan bir ornegin yeniden gonderilmesinin degeri yok."*
 
-RELIABLE seçilseydi kayıp mesaj yeniden gönderilirdi — ama o mesaj çoktan
+RELIABLE seçilseydi kayıp mesaj yeniden gönderilirdi, ama o mesaj çoktan
 bayatlamış olurdu.
 
 QoS ile tazelik eşikleri **birlikte** tasarlandı:
@@ -243,8 +243,8 @@ Doğrulama koşularından:
 |---|---|
 | Kayıp mesaj (seq atlaması) | **0** |
 | Reddedilen mesaj (sırasız teslim) | **0** |
-| Tipik peer yaşı | 0.0–0.2 s |
-| Telemetri yaşı | 0.00–0.04 s |
+| Tipik peer yaşı | 0.0-0.2 s |
+| Telemetri yaşı | 0.00-0.04 s |
 
 Telemetri yaşının 0.04 s'nin altında kalması, AP_DDS'in 20 Hz besleme yaptığını
 ve DDS katmanının tıkanmadığını gösterir.
@@ -281,7 +281,7 @@ Bağımlılık: `std_msgs`. Başka özel mesaj eklenmemiştir.
 
 ## 2.9 İlgili Kavram Sayfaları
 
-- [15 - DDS Mimarisi ve Domain Ayrımı](kavramlar/15-dds-mimarisi-ve-domain-ayrimi.md) — iki context, domain doğrulama
-- [03 - Peer Yönetimi ve Tazelik](kavramlar/03-peer-yonetimi-ve-tazelik.md) — mesajların nasıl değerlendirildiği
-- [02 - Merkeziyetsiz Çıpa](kavramlar/02-merkeziyetsiz-capa.md) — yayınlanan verinin amacı
-- [06 - Rüzgâr Kestirimi](kavramlar/06-ruzgar-kestirimi.md) — AP_DDS konularının birleştirilmesi
+- [15 - DDS Mimarisi ve Domain Ayrımı](kavramlar/15-dds-mimarisi-ve-domain-ayrimi.md) iki context, domain doğrulama
+- [03 - Peer Yönetimi ve Tazelik](kavramlar/03-peer-yonetimi-ve-tazelik.md) mesajların nasıl değerlendirildiği
+- [02 - Merkeziyetsiz Çıpa](kavramlar/02-merkeziyetsiz-capa.md) yayınlanan verinin amacı
+- [06 - Rüzgâr Kestirimi](kavramlar/06-ruzgar-kestirimi.md) AP_DDS konularının birleştirilmesi

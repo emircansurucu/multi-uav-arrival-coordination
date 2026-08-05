@@ -1,8 +1,4 @@
-"""Varis tespiti testleri.
-
-Konumlar hedef etrafinda yerel metre ofsetiyle uretilir; boylece testler
-gercek jeodezik mesafelerle calisir.
-"""
+"""varış eşiğini ve örnekler arasındaki çember geçişini sınar"""
 import math
 
 import pytest
@@ -10,23 +6,25 @@ import pytest
 from oasy_uav_agent.estimation.arrival_detector import ArrivalDetector
 from oasy_uav_agent.estimation.geodesy import LatLon, geodesic_distance_m
 
-TARGET = LatLon(47.535683, -122.228584)
-EARTH_RADIUS_M = 6378137.0
-SECOND_NS = 1_000_000_000
+TARGET = LatLon(47.535683, -122.228584)  # ortak hedef
+EARTH_RADIUS_M = 6378137.0  # yerel konum hesabındaki dünya yarıçapı
+SECOND_NS = 1_000_000_000  # saniyedeki nanosaniye sayısı
 
 
 def offset(east_m: float, north_m: float) -> LatLon:
-    """Hedeften verilen metre ofsetinde konum uretir."""
+    """hedeften verilen metre uzaklığında konum üretir"""
     lat = TARGET.lat + math.degrees(north_m / EARTH_RADIUS_M)
     lon = TARGET.lon + math.degrees(east_m / (EARTH_RADIUS_M * math.cos(math.radians(TARGET.lat))))
     return LatLon(lat, lon)
 
 
 def test_ofset_yardimcisi_tutarli():
+    """yerel ofset yardımcısının doğru mesafe üretmesini sınar"""
     assert geodesic_distance_m(offset(100.0, 0.0), TARGET) == pytest.approx(100.0, abs=0.5)
 
 
 def test_cember_disinda_varis_yok():
+    """kabul çemberi dışında varış oluşmamasını sınar"""
     detector = ArrivalDetector(TARGET)
     for step, east in enumerate([-100.0, -60.0, -20.0]):
         assert detector.update(offset(east, 20.0), step * SECOND_NS) is False
@@ -34,6 +32,7 @@ def test_cember_disinda_varis_yok():
 
 
 def test_dogrudan_ornekle_varis():
+    """çember içindeki doğrudan örneğin varış üretmesini sınar"""
     detector = ArrivalDetector(TARGET)
     detector.update(offset(-50.0, 0.0), 0)
     assert detector.update(offset(-2.0, 0.0), SECOND_NS) is True
@@ -42,16 +41,17 @@ def test_dogrudan_ornekle_varis():
 
 
 def test_ornekler_arasinda_kalan_gecis_interpolasyonla_yakalanir():
-    """Iki ornek de cemberin disinda ama segment cemberi kesiyor."""
+    """iki dış örnek arasındaki çember girişini sınar"""
     detector = ArrivalDetector(TARGET)
     detector.update(offset(-50.0, 0.0), 0)
     assert detector.update(offset(50.0, 0.0), SECOND_NS) is True
     assert detector.interpolated is True
-    # Giris orani 0.45 -> 1 saniyelik araligin 0.45'i.
+    # giriş bir saniyelik aralığın yüzde 45 noktasında
     assert detector.arrival_monotonic_ns == pytest.approx(0.45 * SECOND_NS, rel=1e-3)
 
 
 def test_varis_bir_kez_tetiklenir():
+    """varış olayının yalnızca bir kez üretilmesini sınar"""
     detector = ArrivalDetector(TARGET)
     detector.update(offset(-50.0, 0.0), 0)
     detector.update(offset(0.0, 0.0), SECOND_NS)
@@ -61,6 +61,7 @@ def test_varis_bir_kez_tetiklenir():
 
 
 def test_en_yakin_gecis_kaydedilir():
+    """hedefe en yakın örnek mesafesinin saklanmasını sınar"""
     detector = ArrivalDetector(TARGET)
     for step, east in enumerate([-100.0, -40.0, -12.0]):
         detector.update(offset(east, 8.0), step * SECOND_NS)
@@ -69,7 +70,7 @@ def test_en_yakin_gecis_kaydedilir():
 
 
 def test_en_yakin_gecis_basari_olcutu_degil():
-    """8 m'den gecen arac varis uretmemeli."""
+    """sekiz metre uzaktan geçen aracın varış üretmemesini sınar"""
     detector = ArrivalDetector(TARGET)
     for step, east in enumerate([-60.0, 0.0, 60.0]):
         detector.update(offset(east, 8.0), step * SECOND_NS)
@@ -78,6 +79,7 @@ def test_en_yakin_gecis_basari_olcutu_degil():
 
 
 def test_ozel_yaricap():
+    """özel kabul yarıçapının varış hesabında kullanılmasını sınar"""
     detector = ArrivalDetector(TARGET, radius_m=20.0)
     detector.update(offset(-60.0, 0.0), 0)
     assert detector.update(offset(-15.0, 0.0), SECOND_NS) is True

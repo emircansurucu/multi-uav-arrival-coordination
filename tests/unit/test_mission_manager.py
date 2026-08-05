@@ -1,8 +1,4 @@
-"""Gorev durum makinesi gecis testleri.
-
-MAVLink ve DDS yerine sahte nesneler kullanilir; durum makinesi ROS'a
-bagimli olmadigi icin testler calisma alani kurulmadan calisir.
-"""
+"""sahte bağlantılarla görev durum makinesini sınar"""
 import dataclasses
 import math
 
@@ -18,17 +14,18 @@ from oasy_uav_agent.mission_manager import (
     MissionState,
 )
 
-HOME = LatLon(47.530002, -122.302457)
+HOME = LatLon(47.530002, -122.302457)  # test başlangıç konumu
 ROUTE = (
     LatLon(47.556939, -122.295004),
     LatLon(47.543977, -122.240829),
     LatLon(47.535683, -122.228584),
-)
-TARGET = ROUTE[-1]
-SECOND_NS = 1_000_000_000
+)  # görev yöneticisi test rotası
+TARGET = ROUTE[-1]  # ortak hedef
+SECOND_NS = 1_000_000_000  # saniyedeki nanosaniye sayısı
 
 
 def make_config(vehicle_id: int = 1) -> VehicleConfig:
+    """seçilen araç kimliğiyle test yapılandırması oluşturur"""
     return VehicleConfig(
         vehicle_id=vehicle_id,
         vehicle_domain_id=vehicle_id,
@@ -61,25 +58,28 @@ class FakeSnapshot:
         velocity=(0.0, 20.0),
         wind_sample_spread_s=0.0,
     ):
+        """istenen telemetri değerleriyle sahte bir anlık durum oluşturur"""
         self.position = position
         self.altitude_msl_m = altitude_msl_m
         self.updated_monotonic_ns = monotonic_ns
         self.velocity_east_mps, self.velocity_north_mps = velocity
-        # Burun kuzeyde, hava hizi yer hizina esit -> ruzgarsiz.
+        # kuzeye eşit yer ve hava hızı rüzgârsız olmalı
         self.airspeed_forward_mps = math.hypot(*velocity)
         self.airspeed_left_mps = 0.0
         self.airspeed_up_mps = 0.0
-        # Burun kuzeyde, seviye ucus: ENU'da yaw 90 derece.
+        # kuzeye düz uçuş yönelimi
         self.orientation_xyzw = (0.0, 0.0, math.sin(math.pi / 4), math.cos(math.pi / 4))
         self.wind_sample_spread_s = wind_sample_spread_s
         self._age_s = age_s
 
     @property
     def valid(self):
+        """sahte telemetride konum bulunup bulunmadığını döner"""
         return self.position is not None
 
     @property
     def airspeed_mps(self):
+        """sahte gövde hava hızının büyüklüğünü döner"""
         return math.sqrt(
             self.airspeed_forward_mps ** 2
             + self.airspeed_left_mps ** 2
@@ -87,11 +87,13 @@ class FakeSnapshot:
         )
 
     def age_s(self, _now_ns):
+        """test için ayarlanan telemetri yaşını döner"""
         return self._age_s if self.valid else math.inf
 
 
 class FakeTelemetry:
     def __init__(self):
+        """başlangıçta geçersiz bir sahte telemetri oluşturur"""
         self.current = FakeSnapshot(None, 0.0, 0)
 
     def set(
@@ -103,16 +105,19 @@ class FakeTelemetry:
         velocity=(0.0, 20.0),
         wind_sample_spread_s=0.0,
     ):
+        """sahte telemetriyi verilen konum hız ve zamanla günceller"""
         self.current = FakeSnapshot(
             position, altitude_msl_m, monotonic_ns, age_s, velocity, wind_sample_spread_s
         )
 
     def snapshot(self):
+        """güncel sahte telemetri örneğini döner"""
         return self.current
 
 
 class FakeCommander:
     def __init__(self):
+        """başarılı sonuç veren sahte mavlink komutanını hazırlar"""
         self.connected = False
         self.gps_ready = True
         self.upload_ok = True
@@ -126,17 +131,21 @@ class FakeCommander:
         self.airspeed_commands = []
 
     def connect(self):
+        """sahte bağlantıyı kurulmuş olarak işaretler"""
         self.connected = True
         return True
 
     def wait_gps_ready(self):
+        """testte ayarlanan gps hazır olma sonucunu döner"""
         return self.gps_ready
 
     def upload_mission(self, items):
+        """yüklenen görevi saklayıp ayarlanan sonucu döner"""
         self.uploaded = items
         return self.upload_ok
 
     def set_mode(self, name, timeout_s=None):
+        """uçuş modu denemesini kaydedip ayarlanan sonucu uygular"""
         self.mode_attempts.append(name)
         if not self.mode_ok:
             return False
@@ -145,14 +154,17 @@ class FakeCommander:
         return True
 
     def arm(self):
+        """arm denemesini kaydedip ayarlanan sonucu döner"""
         self.armed = self.arm_ok
         return self.arm_ok
 
     def set_airspeed(self, airspeed_mps):
+        """gönderilen sahte hava hızı komutunu kaydeder"""
         self.airspeed_commands.append(airspeed_mps)
 
 
 def make_manager(vehicle_id: int = 1, peer_commitments=None):
+    """sahte bağımlılıklarla bir görev yöneticisi oluşturur"""
     telemetry = FakeTelemetry()
     commander = FakeCommander()
     manager = MissionManager(
@@ -163,6 +175,7 @@ def make_manager(vehicle_id: int = 1, peer_commitments=None):
 
 
 def advance_to(manager, telemetry, state, max_steps=40):
+    """görev yöneticisini istenen duruma ulaşana kadar ilerletir"""
     for _ in range(max_steps):
         if manager.state == state:
             return
@@ -171,7 +184,7 @@ def advance_to(manager, telemetry, state, max_steps=40):
 
 
 def test_durum_degerleri_mesaj_sabitleriyle_ayni():
-    """VehicleStatus sabitleri ile enum ayni sayilari kullanmali."""
+    """mesaj ve görev durumlarının aynı sayıları kullanmasını sınar"""
     vehicle_status = pytest.importorskip(
         "oasy_interfaces.msg", reason="ROS calisma alani kurulmamis"
     ).VehicleStatus
@@ -180,6 +193,7 @@ def test_durum_degerleri_mesaj_sabitleriyle_ayni():
 
 
 def test_init_baglantiya_gecer():
+    """ilk adımda bağlantı durumuna geçilmesini sınar"""
     manager, _, _ = make_manager()
     assert manager.state == MissionState.INIT
     manager.step()
@@ -187,6 +201,7 @@ def test_init_baglantiya_gecer():
 
 
 def test_telemetri_gelmeden_gorev_yuklenmez():
+    """telemetri gelmeden görevin yüklenmemesini sınar"""
     manager, commander, telemetry = make_manager()
     for _ in range(5):
         manager.step()
@@ -196,6 +211,7 @@ def test_telemetri_gelmeden_gorev_yuklenmez():
 
 
 def test_gps_hazir_degilse_beklenir():
+    """gps hazır değilken bağlantı durumunda beklenmesini sınar"""
     manager, commander, telemetry = make_manager()
     commander.gps_ready = False
     telemetry.set(HOME, 0.0, SECOND_NS)
@@ -205,6 +221,7 @@ def test_gps_hazir_degilse_beklenir():
 
 
 def test_gorev_yukleme_basarisiz_olursa_tekrar_denenir():
+    """başarısız görev yüklemesinin aynı durumda yeniden denenmesini sınar"""
     manager, commander, telemetry = make_manager()
     commander.upload_ok = False
     telemetry.set(HOME, 0.0, SECOND_NS)
@@ -215,15 +232,16 @@ def test_gorev_yukleme_basarisiz_olursa_tekrar_denenir():
 
 
 def test_oncu_arac_peer_beklemeden_kalkisa_gecer():
+    """öncü aracın diğer araç taahhüdünü beklememesini sınar"""
     manager, _, telemetry = make_manager(vehicle_id=1)
     telemetry.set(HOME, 0.0, SECOND_NS)
     advance_to(manager, telemetry, MissionState.WAIT_TAKEOFF_SLOT)
-    # Oncu, arm oncesi taahhut vermez.
+    # öncü arm olmadan varış taahhüdü vermemeli
     assert manager.snapshot().arrival_committed is False
 
 
 def test_oncu_taahhudu_kalkis_anina_baglanir():
-    """Arm suresi plana girmemeli; taahhut arm tamamlaninca verilir."""
+    """arm süresinin varış planına katılmamasını sınar"""
     import time as _time
 
     manager, _, telemetry = make_manager(vehicle_id=1)
@@ -239,6 +257,7 @@ def test_oncu_taahhudu_kalkis_anina_baglanir():
 
 
 def test_takipci_taahhut_gelmeden_kalkmaz():
+    """takipçi aracın öncü taahhüdü gelmeden kalkmamasını sınar"""
     manager, commander, telemetry = make_manager(vehicle_id=2, peer_commitments=lambda _ns: {})
     telemetry.set(HOME, 0.0, SECOND_NS)
     advance_to(manager, telemetry, MissionState.WAIT_PEERS)
@@ -251,7 +270,7 @@ def test_takipci_taahhut_gelmeden_kalkmaz():
 
 
 def test_takipci_gelecekteki_slota_kadar_yerde_bekler():
-    """Kalkis ani gelecekteyse arm edilmez."""
+    """gelecekteki kalkış anından önce arm olunmamasını sınar"""
     import time as _time
 
     uzak_varis = _time.monotonic_ns() + 3600 * SECOND_NS
@@ -269,7 +288,7 @@ def test_takipci_gelecekteki_slota_kadar_yerde_bekler():
 
 
 def test_gecmisteki_slot_hemen_kalkisa_gecer():
-    """Kalkis ani gecmisse beklemeden arm edilir."""
+    """geçmiş kalkış anında beklemeden arm olunmasını sınar"""
     import time as _time
 
     gecmis_varis = _time.monotonic_ns() - 100 * SECOND_NS
@@ -282,9 +301,9 @@ def test_gecmisteki_slot_hemen_kalkisa_gecer():
 
 
 def test_nominal_ucus_suresi_rota_uzunlugundan_turer():
-    """Duz cizgi degil rota boyunca mesafe kullanilmali."""
+    """uçuş süresinde rota mesafesinin kullanılmasını sınar"""
     manager, _, _ = make_manager()
-    # Test rotasinin jeodezik bacaklari: 3047 + 4325 + 1304 = 8676 m.
+    # test rotasının toplam uzunluğu yaklaşık 8676 metre
     assert manager.nominal_flight_s == pytest.approx(8676 / 22.9, rel=0.01)
 
     duz_cizgi_suresi = geodesic_distance_m(HOME, TARGET) / 22.9
@@ -292,6 +311,7 @@ def test_nominal_ucus_suresi_rota_uzunlugundan_turer():
 
 
 def test_arm_sirasinda_once_auto_moduna_gecilir():
+    """arm işleminden önce auto moduna geçilmesini sınar"""
     manager, commander, telemetry = make_manager()
     telemetry.set(HOME, 0.0, SECOND_NS)
     advance_to(manager, telemetry, MissionState.TAKEOFF)
@@ -299,9 +319,7 @@ def test_arm_sirasinda_once_auto_moduna_gecilir():
     assert commander.armed is True
 
 
-# Ruzgar filtresi oturana kadar kestirim yayinlanmaz. Testler bu sureyi
-# gercek zamanda beklemek yerine ornek damgalarini ilerleterek gecer.
-WIND_SAMPLE_DT_NS = SECOND_NS // 10
+WIND_SAMPLE_DT_NS = SECOND_NS // 10  # rüzgâr testi örnek aralığı
 
 
 def feed_wind(
@@ -314,7 +332,7 @@ def feed_wind(
     duration_s=WIND_SETTLE_AFTER_S + 1.0,
     wind_sample_spread_s=0.0,
 ):
-    """Filtre oturacak kadar ayni ruzgar ornegini besler; son damgayi doner."""
+    """filtreyi oturtacak kadar rüzgâr örneği besler"""
     sample_ns = start_ns
     for _ in range(int(duration_s * SECOND_NS / WIND_SAMPLE_DT_NS)):
         telemetry.set(
@@ -331,6 +349,7 @@ def feed_wind(
 
 
 def test_irtifa_esiklerinde_ilerler():
+    """görev durumunun kalkış ve seyir irtifalarında ilerlemesini sınar"""
     manager, commander, telemetry = make_manager()
     telemetry.set(HOME, 0.0, SECOND_NS)
     advance_to(manager, telemetry, MissionState.TAKEOFF)
@@ -353,18 +372,14 @@ def test_irtifa_esiklerinde_ilerler():
 
 
 def reach_cruise(manager, telemetry):
+    """test görevini sahte telemetriyle seyir durumuna getirir"""
     telemetry.set(HOME, 0.0, SECOND_NS)
     advance_to(manager, telemetry, MissionState.TAKEOFF)
     telemetry.set(HOME, 400.0, 2 * SECOND_NS)
     advance_to(manager, telemetry, MissionState.CRUISE)
 
 def terminal_manager(early_s: float, oran: float = 0.10):
-    """Terminal fazda, son bacaga girmeden, erken ve minimum hizda arac kurar.
-
-    oran son bacaktan onceki bacak uzerindeki konumu belirler: 0 son
-    waypoint'te, buyudukce geriye gider. Terminal yaricapi 2000 m oldugu
-    icin kucuk tutulur.
-    """
+    """terminal öncesinde erken ve düşük hızlı araç durumu kurar"""
     import time as _time
 
     telemetry = FakeTelemetry()
@@ -378,8 +393,7 @@ def terminal_manager(early_s: float, oran: float = 0.10):
     original_config = manager._config
     manager._config = dataclasses.replace(original_config, loiter_enabled=False)
     reach_cruise(manager, telemetry)
-    # Aktif waypoint'in dogru bacaga gelmesi icin rotayi sirayla gec; aksi
-    # halde rota sapmasi yanlis bacaga gore olculur.
+    # aktif rota bacağını sırayla ilerletir
     for index, waypoint in enumerate(ROUTE[:-2]):
         telemetry.set(waypoint, 400.0, (10 + index) * SECOND_NS)
         manager.step()
@@ -392,11 +406,9 @@ def terminal_manager(early_s: float, oran: float = 0.10):
     telemetry.set(yakin, 400.0, 20 * SECOND_NS)
     manager.step()
 
-    # Hiz yetkisi tukenmis: minimum hava hizinda ve erken. Nominal plan da
-    # guncellenmeli, aksi halde capa mantigi plani geri yazar.
+    # erken aracı en düşük hava hızına getirir
     manager._controller._commanded_mps = 15.0
-    # ETA komut edilen hava hizindan turetildigi icin plan, hiz
-    # ayarlandiktan sonra ve ayni modelden kurulmali.
+    # planı komut hızından hesaplanan eta ile kurar
     eta_s = manager._model_eta_s(yakin)
     plan_ns = _time.monotonic_ns() + int((eta_s + early_s) * SECOND_NS)
     manager._planned_arrival_ns = plan_ns
@@ -405,18 +417,13 @@ def terminal_manager(early_s: float, oran: float = 0.10):
 
 
 def drive_trigger(manager, ticks=45):
-    """Tetikleyici gurultuye basmasin diye ardisik dogrulama istiyor."""
+    """tetikleyiciyi ardışık görev adımlarıyla çalıştırır"""
     for _ in range(ticks):
         manager.step()
 
 
 def test_varan_arac_gercek_varis_anini_yayinlar():
-    """Varan arac capaya olgu ile katilmali: vardigi an.
-
-    Sifir yayinlansaydi capa kumesinden duser ve capa cokerdi; en son
-    varacak arac digerlerinin ucmus oldugu kaymayi kaybederdi. Model dali
-    kullanilsaydi da "gorev bastan basliyor" gibi tum rota suresi eklenirdi.
-    """
+    """varan aracın çıpaya gerçek varış anıyla katılmasını sınar"""
     manager, _, telemetry = make_manager(vehicle_id=1)
     reach_cruise(manager, telemetry)
     manager.step()
@@ -438,6 +445,7 @@ def test_varan_arac_gercek_varis_anini_yayinlar():
 
 
 def test_kritik_bolgede_terminal_faza_gecer():
+    """araç kritik hedef bölgesine girince terminal durumuna geçmesini sınar"""
     manager, _, telemetry = make_manager()
     reach_cruise(manager, telemetry)
 
@@ -453,6 +461,7 @@ def test_kritik_bolgede_terminal_faza_gecer():
 
 
 def test_varis_rtl_ve_done_zinciri():
+    """varıştan sonra rtl ve tamam durumlarının sırayla oluşmasını sınar"""
     manager, commander, telemetry = make_manager()
     reach_cruise(manager, telemetry)
 
@@ -475,6 +484,7 @@ def test_varis_rtl_ve_done_zinciri():
 
 
 def test_eskimis_telemetri_varis_uretmez():
+    """eskimiş telemetrinin varış olayı üretmemesini sınar"""
     manager, _, telemetry = make_manager()
     reach_cruise(manager, telemetry)
     telemetry.set(TARGET, 400.0, 3 * SECOND_NS, age_s=10.0)
@@ -484,6 +494,7 @@ def test_eskimis_telemetri_varis_uretmez():
 
 
 def test_rtl_dogrulanmazsa_done_olmaz():
+    """rtl modu doğrulanmadan görevin tamamlanmamasını sınar"""
     manager, commander, telemetry = make_manager()
     reach_cruise(manager, telemetry)
     telemetry.set(LatLon(TARGET.lat + 0.001, TARGET.lon), 400.0, 3 * SECOND_NS)
@@ -498,28 +509,25 @@ def test_rtl_dogrulanmazsa_done_olmaz():
 
 
 def test_terminal_yaricapi_dokuman_kritik_bolgesiyle_ayni():
+    """terminal yarıçapının dokümandaki iki kilometreye uymasını sınar"""
     assert TERMINAL_RADIUS_M == 2000.0
 
 
 def test_seyirde_gec_kalinca_hiz_komutu_gonderilir():
-    """Plan cok kisa tutulursa arac gec kalir ve hizlanma komutu gitmeli."""
+    """kısa planda hızlanma komutu gönderilmesini sınar"""
     import time as _time
 
     manager, commander, telemetry = make_manager(vehicle_id=1)
     reach_cruise(manager, telemetry)
 
-    # Taahhut edilen varisa yalnizca 60 s kaldi ama rota cok daha uzun.
-    # Nominal plan da ayarlanmali, aksi halde capa plani geri yazar; ayrica
-    # oncunun tek seferlik ruzgar revizyonu devre disi birakilmali, yoksa
-    # plani kalkis anindan yeniden kurup senaryoyu bozuyor.
+    # kalan rotaya göre kısa bir varış planı kurar
     manager._plan_revised = True
     plan_ns = _time.monotonic_ns() + 60 * SECOND_NS
     manager._planned_arrival_ns = plan_ns
     manager._nominal_plan_ns = plan_ns
 
     baslangic = manager.snapshot().commanded_airspeed_mps
-    # Rate limit gercek gecen sureye bagli oldugu icin adimlar arasinda
-    # kisa bekleme gerekiyor.
+    # hız sınırı için adımlar arasında kısa süre bırakır
     for step in range(30):
         telemetry.set(HOME, 400.0, (10 + step) * SECOND_NS)
         manager.step()
@@ -530,12 +538,12 @@ def test_seyirde_gec_kalinca_hiz_komutu_gonderilir():
 
 
 def test_hiz_komutu_konfigurasyon_sinirlarini_asmaz():
+    """görev yöneticisinin hız komutlarının yapılandırma sınırlarında kalmasını sınar"""
     import time as _time
 
     manager, commander, telemetry = make_manager(vehicle_id=1)
     reach_cruise(manager, telemetry)
-    # Capa ve oncu revizyonu plani geri yazmasin; test yalnizca hiz
-    # komutunun sinirlar icinde kalmasini olcuyor.
+    # testi yalnızca hız komutu sınırlarına ayırır
     manager._plan_revised = True
     plan_ns = _time.monotonic_ns() + 60 * SECOND_NS
     manager._planned_arrival_ns = plan_ns
@@ -552,12 +560,7 @@ def test_hiz_komutu_konfigurasyon_sinirlarini_asmaz():
 
 
 def test_capa_nominal_plandan_ileri_kaymadan_birikmez():
-    """Ulasilabilirlik nominalden erkense plan hic degismemeli.
-
-    Kayma bir onceki kaymis degere gore olculurse, azami hizin altinda
-    ucarken ulasilabilirligin dogal ileri suruklenmesi birikip plani
-    sonsuza kadar oteliyordu.
-    """
+    """erken ulaşılabilirlikte nominal planın değişmemesini sınar"""
     import time as _time
 
     manager, _, telemetry = make_manager(vehicle_id=1)
@@ -570,16 +573,16 @@ def test_capa_nominal_plandan_ileri_kaymadan_birikmez():
         manager.step()
         _time.sleep(0.01)
 
-    # Ulasilabilirlik nominalden erken oldugu surece plan sabit kalmali.
+    # plan nominal varış anında sabit kalmalı
     assert manager.snapshot().planned_arrival_monotonic_ns == nominal
 
 
 def test_ulasilamayan_peer_plani_ileri_kaydirir():
-    """Yavas bir peer'in ulasilabilirligi ortak capayi geriye ceker."""
+    """yavaş aracın ortak çıpayı ileri taşımasını sınar"""
     import time as _time
 
     now = _time.monotonic_ns()
-    # HA-2 ancak 900 s sonra varabiliyor; HA-1 hedefi bunun 20 s oncesi olmali.
+    # ha2 için ulaşılabilen varış anı 900 saniye sonra
     yavas_peer = {2: now + 900 * SECOND_NS}
     telemetry = FakeTelemetry()
     commander = FakeCommander()
@@ -590,8 +593,7 @@ def test_ulasilamayan_peer_plani_ileri_kaydirir():
         guided_commander=FakeGuided(),
     )
     reach_cruise(manager, telemetry)
-    # Capa artik yerde ve tirmanista da isledigi icin taban olarak
-    # taahhut edilen plan alinir; capa onu hicbir zaman oynatmaz.
+    # taahhüt edilen planı çıpa için taban alır
     nominal = manager.snapshot().committed_plan_monotonic_ns
 
     telemetry.set(HOME, 400.0, 20 * SECOND_NS)
@@ -604,13 +606,13 @@ def test_ulasilamayan_peer_plani_ileri_kaydirir():
 
 
 def test_yerdeki_arac_peer_ruzgarina_gore_sureyi_duzeltir():
-    """Ilk kalkan arac ruzgar sondasi; yerdekiler slotunu buna gore kurar."""
+    """yerdeki aracın diğer araç rüzgârıyla süreyi düzeltmesini sınar"""
     telemetry = FakeTelemetry()
     commander = FakeCommander()
     manager = MissionManager(
         make_config(2), commander, telemetry,
         peer_commitments=lambda _ns: {},
-        peer_wind=lambda _ns: (8.0, 0.0),  # 8 m/s, kuzeyden
+        peer_wind=lambda _ns: (8.0, 0.0),  # kuzeyden sekiz metre bölü saniye
     )
     ruzgarsiz_s = manager.nominal_flight_s
 
@@ -622,6 +624,7 @@ def test_yerdeki_arac_peer_ruzgarina_gore_sureyi_duzeltir():
 
 
 def test_ruzgar_yoksa_nominal_sure_degismez():
+    """rüzgâr bilgisi yokken nominal uçuş süresinin korunmasını sınar"""
     manager, _, telemetry = make_manager(vehicle_id=2)
     ruzgarsiz_s = manager.nominal_flight_s
     telemetry.set(HOME, 0.0, SECOND_NS)
@@ -631,13 +634,12 @@ def test_ruzgar_yoksa_nominal_sure_degismez():
 
 
 def test_havadaki_arac_ruzgari_yayinlar():
-    """Yer hizi ile hava hizi farki ruzgar olarak raporlanmali."""
+    """yer ve hava hızı farkının rüzgâr olarak yayınlanmasını sınar"""
     manager, _, telemetry = make_manager(vehicle_id=1)
     reach_cruise(manager, telemetry)
     assert manager.snapshot().wind_valid is False or manager.snapshot().wind_speed_mps < 0.1
 
-    # Kuzeye 15 m/s ilerliyor ama burnu kuzeyde 23 m/s hava hizinda:
-    # 8 m/s karsi ruzgar var.
+    # kuzey yönünde sekiz metre bölü saniye karşı rüzgâr kurar
     feed_wind(manager, telemetry, 400.0, 30 * SECOND_NS)
 
     durum = manager.snapshot()
@@ -647,7 +649,7 @@ def test_havadaki_arac_ruzgari_yayinlar():
 
 
 def test_yerde_beklerken_ruzgar_gelince_slot_guncellenir():
-    """Taahhut ani ruzgar olculmeden once oldugu icin slot sonradan guncellenmeli."""
+    """rüzgâr gelince yerdeki kalkış anının yenilenmesini sınar"""
     import time as _time
 
     ruzgar = {"deger": None}
@@ -666,7 +668,7 @@ def test_yerde_beklerken_ruzgar_gelince_slot_guncellenir():
     manager.step()
     assert manager.nominal_flight_s == ruzgarsiz_s
 
-    # Oncu havalanip ruzgari olctu.
+    # öncü rüzgâr ölçümünü yayınlar
     ruzgar["deger"] = (8.0, 0.0)
     manager.step()
     assert manager.nominal_flight_s > ruzgarsiz_s
@@ -674,7 +676,7 @@ def test_yerde_beklerken_ruzgar_gelince_slot_guncellenir():
 
 
 def test_ruzgar_tirmanista_da_olculur():
-    """Tirmanis 200 s surebiliyor; ruzgar seyri beklemeden yayinlanmali."""
+    """rüzgârın tırmanışta da ölçülmesini sınar"""
     manager, _, telemetry = make_manager(vehicle_id=1)
     telemetry.set(HOME, 0.0, SECOND_NS)
     advance_to(manager, telemetry, MissionState.TAKEOFF)
@@ -687,11 +689,7 @@ def test_ruzgar_tirmanista_da_olculur():
 
 
 def test_zaman_hizasiz_orneklerden_ruzgar_kestirilmez():
-    """Konum, yer hizi ve hava hizi farkli anlara aitse fark ruzgar degildir.
-
-    Uc konu da 33 ms'de bir yayinlanir; yayilimin buyumesi konulardan
-    birinin durdugu anlamina gelir.
-    """
+    """zamanı uyuşmayan hız örneklerinin kullanılmamasını sınar"""
     manager, _, telemetry = make_manager(vehicle_id=1)
     telemetry.set(HOME, 0.0, SECOND_NS)
     advance_to(manager, telemetry, MissionState.TAKEOFF)
@@ -699,13 +697,13 @@ def test_zaman_hizasiz_orneklerden_ruzgar_kestirilmez():
     son_ns = feed_wind(manager, telemetry, 400.0, 5 * SECOND_NS, wind_sample_spread_s=1.5)
     assert manager.snapshot().wind_valid is False
 
-    # Konular tekrar es zamanli yayinlamaya baslayinca kestirim olusmali.
+    # eş zamanlı örneklerle kestirim oluşmalı
     feed_wind(manager, telemetry, 400.0, son_ns)
     assert manager.snapshot().wind_valid is True
 
 
 def test_yerde_ruzgar_kestirimi_yapilmaz():
-    """Kalkis kosusundaki dusuk hava hizi anlamli ruzgar vermez."""
+    """kalkış koşusundaki düşük hızın rüzgâr üretmemesini sınar"""
     manager, _, telemetry = make_manager(vehicle_id=1)
     telemetry.set(HOME, 0.0, SECOND_NS, velocity=(0.0, 2.0))
     telemetry.current.airspeed_forward_mps = 3.0
@@ -715,37 +713,35 @@ def test_yerde_ruzgar_kestirimi_yapilmaz():
 
 
 def test_alcak_irtifada_ruzgar_kestirimi_yapilmaz():
-    """Ruzgar yere dogru azaldigi icin alcak ornekler seyri temsil etmez."""
+    """alçak irtifa örneklerinin rüzgâr hesabına katılmamasını sınar"""
     manager, _, telemetry = make_manager(vehicle_id=1)
     telemetry.set(HOME, 0.0, SECOND_NS)
     advance_to(manager, telemetry, MissionState.TAKEOFF)
 
-    # 30 m: kalkis irtifasinin (100 m) altinda. Filtre oturacak kadar ornek
-    # verilse bile hicbiri kabul edilmemeli.
+    # 30 metre irtifadaki örnekler kabul edilmemeli
     son_ns = feed_wind(manager, telemetry, 30.0, 5 * SECOND_NS)
     assert manager.snapshot().wind_valid is False
 
-    # 120 m: esigin uzerinde.
+    # 120 metre irtifadaki örnekler kabul edilmeli
     feed_wind(manager, telemetry, 120.0, son_ns)
     assert manager.snapshot().wind_valid is True
 
 
 def test_oncu_ruzgar_ogrenince_plani_ileri_ceker():
-    """Kalkista ruzgarsiz taahhut veren oncu, ruzgari ogrenince plani uzatmali."""
+    """öncünün rüzgâr öğrenince planı ileri çekmesini sınar"""
     manager, _, telemetry = make_manager(vehicle_id=1)
     telemetry.set(HOME, 0.0, SECOND_NS)
     advance_to(manager, telemetry, MissionState.TAKEOFF)
     ruzgarsiz_plan = manager.snapshot().committed_plan_monotonic_ns
 
-    # 8 m/s karsi ruzgarda, esigin uzerinde irtifada seyre gec. Revizyon
-    # ruzgar kestirimi oturmadan yapilmaz, bu yuzden filtre beslenir.
+    # filtreyi karşı rüzgârla oturtur
     feed_wind(manager, telemetry, 400.0, 10 * SECOND_NS)
 
     assert manager.snapshot().committed_plan_monotonic_ns > ruzgarsiz_plan
 
 
 def test_plan_asla_one_alinmaz():
-    """Ratchet: ruzgar zayiflasa bile plan geriye cekilmemeli."""
+    """rüzgâr zayıflayınca planın geri çekilmemesini sınar"""
     ruzgar = {"deger": (8.0, 0.0)}
     telemetry = FakeTelemetry()
     commander = FakeCommander()
@@ -770,7 +766,7 @@ def test_plan_asla_one_alinmaz():
 
 
 def test_takipci_oncunun_revizyonunu_yerde_izler():
-    """Oncu tirmanista plani ileri cekince, yerdeki takipci de izlemeli."""
+    """takipçinin öncü planını yerdeyken izlemesini sınar"""
     import time as _time
 
     ha1_plan = {"deger": _time.monotonic_ns() + 600 * SECOND_NS}
@@ -784,7 +780,7 @@ def test_takipci_oncunun_revizyonunu_yerde_izler():
     advance_to(manager, telemetry, MissionState.WAIT_TAKEOFF_SLOT)
     ilk_plan = manager.snapshot().planned_arrival_monotonic_ns
 
-    # Oncu ruzgari ogrenip planini 60 s ileri cekti.
+    # öncü planını 60 saniye ileri çeker
     ha1_plan["deger"] += 60 * SECOND_NS
     for _ in range(3):
         manager.step()
@@ -796,7 +792,7 @@ def test_takipci_oncunun_revizyonunu_yerde_izler():
 
 
 def test_oncu_plani_yalnizca_bir_kez_revize_eder():
-    """Gurultulu ruzgar olcumu plani tekrar tekrar ileri itmemeli."""
+    """öncü planının yalnızca bir kez yenilenmesini sınar"""
     ruzgar = {"deger": (6.0, 0.0)}
     telemetry = FakeTelemetry()
     commander = FakeCommander()
@@ -808,12 +804,11 @@ def test_oncu_plani_yalnizca_bir_kez_revize_eder():
     telemetry.set(HOME, 0.0, SECOND_NS)
     advance_to(manager, telemetry, MissionState.TAKEOFF)
     feed_wind(manager, telemetry, 400.0, 10 * SECOND_NS)
-    # Capa planned_arrival'i ayrica oynatabilir; revizyonun dokundugu deger
-    # nominal plandir.
+    # yenilemenin dokunduğu nominal planı saklar
     revize_sonrasi = manager._nominal_plan_ns
     assert manager._plan_revised is True
 
-    # Olcum artsa bile nominal plan bir daha degismemeli.
+    # ölçüm artsa da nominal plan değişmemeli
     for hiz in (7.0, 8.0, 9.0, 10.0):
         ruzgar["deger"] = (hiz, 0.0)
         for _ in range(3):
@@ -822,11 +817,7 @@ def test_oncu_plani_yalnizca_bir_kez_revize_eder():
 
 
 def test_yayinlanan_plan_capa_kaymasini_tasimaz():
-    """Peer'lara taahhut edilmis plan gider; capa duzeltmesi yerel kalir.
-
-    Capa kaymasi taahhut uzerinden tasinirsa araclar birbirinin kaymasini
-    besleyip plani sonsuza kadar ileri itiyor.
-    """
+    """çıpa kaymasının yayınlanan taahhüde taşınmamasını sınar"""
     import time as _time
 
     telemetry = FakeTelemetry()
@@ -843,14 +834,14 @@ def test_yayinlanan_plan_capa_kaymasini_tasimaz():
     manager.step()
 
     durum = manager.snapshot()
-    # Capa calisma planini ileri itmis olmali...
+    # çıpa çalışma planını ileri taşımalı
     assert durum.planned_arrival_monotonic_ns > durum.committed_plan_monotonic_ns
-    # ...ama yayinlanan taahhut degismemis olmali.
+    # yayınlanan taahhüt değişmemeli
     assert durum.committed_plan_monotonic_ns == manager._nominal_plan_ns
 
 
 def nokta_hedefe_uzaklikta(baslangic, bitis, hedef_mesafe_m):
-    """baslangic->bitis bacagi uzerinde, hedefe verilen uzaklikta nokta."""
+    """rota bacağı üzerinde hedefe verilen uzaklıkta nokta üretir"""
     dusuk, yuksek = 0.0, 1.0
     nokta = baslangic
     for _ in range(40):
@@ -867,7 +858,7 @@ def nokta_hedefe_uzaklikta(baslangic, bitis, hedef_mesafe_m):
 
 
 def gate_manager(early_at_gate_s: float = 30.0, hedefe_mesafe_m: float = 2800.0):
-    """Son yasal kapidan belirtilen kadar erken gececek bir arac kurar."""
+    """son yasal kapıya belirtilen kadar erken ulaşan araç kurar"""
     import time as _time
 
     telemetry = FakeTelemetry()
@@ -885,16 +876,14 @@ def gate_manager(early_at_gate_s: float = 30.0, hedefe_mesafe_m: float = 2800.0)
     original_config = manager._config
     manager._config = dataclasses.replace(original_config, loiter_enabled=False)
     reach_cruise(manager, telemetry)
-    # Kapinin bulundugu bacagi aktif et.
+    # kapının bulunduğu rota bacağını etkinleştirir
     telemetry.set(ROUTE[0], 400.0, 10 * SECOND_NS)
     manager.step()
 
     konum = nokta_hedefe_uzaklikta(ROUTE[0], ROUTE[1], hedefe_mesafe_m)
     telemetry.set(konum, 400.0, 20 * SECOND_NS)
     manager.step()
-    # Plan taahhudunun oturmasi icin loiter kapaliyken bir adim daha. Aksi
-    # halde taahhut siradaki adimda kuruluyor ve planlanan varis ~300 s
-    # ilerliyor; teste yerlestirilen gecis ani penceredeki yerini kaybediyor.
+    # varış taahhüdünü bekleme kapalıyken oturtur
     manager.step()
     manager._config = original_config
 
@@ -903,16 +892,10 @@ def gate_manager(early_at_gate_s: float = 30.0, hedefe_mesafe_m: float = 2800.0)
     eta_to_gate_s = manager._eta_to_gate_s(konum)
     assert eta_to_gate_s is not None
 
-    # Tek araclik kurulumda capa yalnizca kendi ulasilabilirliginden gelir ve
-    # loiter basladiginda kayar; kapi kendi zamanlamasi yuzunden degil capa
-    # kaydigi icin biterdi. Nominal plani oturmus degere sabitlemek capayi
-    # dondurur, boylece testler kapinin kendi davranisini olcer.
+    # testi kapı davranışına ayırmak için çıpayı dondurur
     manager._nominal_plan_ns = manager._planned_arrival_ns
 
-    # Plan geometriden turetilir; atamayla zorlanamaz (ratchet geri iter).
-    # Bu yuzden pencere plan uzerinden degil terminal sinirlari uzerinden
-    # kurulur: upper = T-E-late_margin oldugundan E oturmus plandan cozulur.
-    # Boylece tahmini gecis upper'dan tam early_at_gate_s once dusar.
+    # kapı penceresini terminal sınırlarından kurar
     now_ns = _time.monotonic_ns()
     terminal_earliest_s = (
         (manager._planned_arrival_ns - now_ns) / SECOND_NS
@@ -920,7 +903,7 @@ def gate_manager(early_at_gate_s: float = 30.0, hedefe_mesafe_m: float = 2800.0)
         - GATE_LATE_MARGIN_S
         - early_at_gate_s
     )
-    # L-E arasi 100 s'lik hiz yetkisi pencereyi bos birakmaz.
+    # 100 saniyelik hız yetkisi pencereyi açık tutmalı
     manager._hold_gate = dataclasses.replace(
         manager._hold_gate,
         terminal_earliest_s=terminal_earliest_s,
@@ -930,6 +913,7 @@ def gate_manager(early_at_gate_s: float = 30.0, hedefe_mesafe_m: float = 2800.0)
 
 
 def test_kapiya_erken_gelince_tek_yasal_noktada_loiter_baslar():
+    """kapıya erken gelen aracın son yasal noktada beklemeye başlamasını sınar"""
     manager, commander, _, guided = gate_manager(early_at_gate_s=30.0)
     assert manager.state == MissionState.CRUISE
 
@@ -944,7 +928,7 @@ def test_kapiya_erken_gelince_tek_yasal_noktada_loiter_baslar():
 
 
 def test_kapi_guided_hedefi_beklerken_yeniden_yayinlanir():
-    """BEST_EFFORT tek paket kaybi bekleme hedefini yok etmemeli."""
+    """tek paket kaybında guided hedefinin yenilenmesini sınar"""
     manager, _, _, guided = gate_manager(early_at_gate_s=30.0)
     manager.step()
     ilk_sayi = len(guided.sent)
@@ -956,6 +940,7 @@ def test_kapi_guided_hedefi_beklerken_yeniden_yayinlanir():
 
 
 def test_kapi_ust_sinira_iki_saniyeden_yakinsa_loiter_yapilmaz():
+    """kapı çıkışına çok az kalmışken bekleme başlatılmamasını sınar"""
     manager, commander, _, guided = gate_manager(early_at_gate_s=1.0)
     manager.step()
 
@@ -964,6 +949,7 @@ def test_kapi_ust_sinira_iki_saniyeden_yakinsa_loiter_yapilmaz():
 
 
 def test_kapi_gec_rezerv_yirmi_saniyenin_altindaysa_kisa_loiter_yapar():
+    """kapı geç rezervi azken kısa bekleme başlatılmasını sınar"""
     manager, commander, _, guided = gate_manager(early_at_gate_s=10.0)
 
     manager.step()
@@ -973,7 +959,7 @@ def test_kapi_gec_rezerv_yirmi_saniyenin_altindaysa_kisa_loiter_yapar():
 
 
 def test_hedefe_yakinken_loiter_yapilmaz():
-    """Madde 6: hedefin 2 km cevresinde loiter yasak, paylisiyla birlikte."""
+    """hedefe yakınken bekleme yapılmamasını sınar"""
     manager, commander, telemetry, guided = gate_manager(
         early_at_gate_s=30.0, hedefe_mesafe_m=2200.0
     )
@@ -988,6 +974,7 @@ def test_hedefe_yakinken_loiter_yapilmaz():
 
 
 def test_loiter_kapaliyken_tetiklenmez():
+    """bekleme kapalıyken guided loiter başlatılmamasını sınar"""
     import dataclasses
 
     manager, commander, _, guided = gate_manager(early_at_gate_s=30.0)
@@ -999,13 +986,14 @@ def test_loiter_kapaliyken_tetiklenmez():
 
 
 def test_kapi_cikis_ani_gelince_auto_ya_donulur():
+    """kapı çıkış anı gelince auto moduna dönülmesini sınar"""
     import time as _time
 
     manager, commander, _, _ = gate_manager(early_at_gate_s=30.0)
     manager.step()
     assert manager._loitering is True
 
-    # Ust siniri simdinin hemen onune getir; bir sonraki tick cikmalidir.
+    # çıkış sınırını şimdinin önüne alır
     plan_ns = _time.monotonic_ns() + int(
         (
             manager._hold_gate.terminal_earliest_s
@@ -1021,6 +1009,7 @@ def test_kapi_cikis_ani_gelince_auto_ya_donulur():
 
 
 def test_kapi_auto_gecisi_basarisizsa_normal_akisi_surdurmez():
+    """auto geçişi başarısızken normal görevin sürmemesini sınar"""
     import time as _time
 
     manager, commander, _, _ = gate_manager(early_at_gate_s=30.0)
@@ -1042,6 +1031,7 @@ def test_kapi_auto_gecisi_basarisizsa_normal_akisi_surdurmez():
 
 
 def test_kapi_guvenlik_payi_azalirsa_auto_ya_doner():
+    """kapı güvenlik payı azalınca guided beklemenin bitmesini sınar"""
     manager, commander, telemetry, _ = gate_manager(early_at_gate_s=30.0)
     manager.step()
     assert manager._loitering is True
@@ -1055,11 +1045,12 @@ def test_kapi_guvenlik_payi_azalirsa_auto_ya_doner():
 
 
 def test_kapi_loiteri_canli_eta_sicramasindan_etkilenmez():
+    """kapı beklemesinin anlık eta sıçramasıyla bozulmamasını sınar"""
     manager, commander, _, _ = gate_manager(early_at_gate_s=30.0)
     manager.step()
     assert manager._loitering is True
 
-    # Ilerleme coktugu icin canli ETA iki katina ciksin.
+    # canlı eta değerini iki katına çıkarır
     manager._eta_s *= 2.0
     for _ in range(20):
         manager.step()
@@ -1069,7 +1060,7 @@ def test_kapi_loiteri_canli_eta_sicramasindan_etkilenmez():
 
 
 def test_loiter_sirasinda_aktif_ulasilabilirlik_dondurulur():
-    """Yerel capanin loiter'i ileri beslemesi engellenir."""
+    """bekleme sırasında ulaşılabilirliğin dondurulmasını sınar"""
     manager, _, _, _ = gate_manager(early_at_gate_s=30.0)
     manager.step()
     assert manager._loitering is True
@@ -1082,7 +1073,7 @@ def test_loiter_sirasinda_aktif_ulasilabilirlik_dondurulur():
 
 
 def test_saglam_pencere_dogru_siralanir():
-    """E ve L ayni operasyonel zarf modelinden sonlu uretilmeli."""
+    """varış sınırlarının aynı rüzgâr zarfından üretilmesini sınar"""
     manager, _, telemetry = make_manager(vehicle_id=1)
     reach_cruise(manager, telemetry)
     konum = telemetry.current.position
@@ -1091,11 +1082,7 @@ def test_saglam_pencere_dogru_siralanir():
     assert E > 0.0
     assert L > 0.0
 
-    # Pencere ruzgarsiz nominal sureyi ICERMEK ZORUNDA DEGIL: 10 m/s'lik
-    # zarfta azami hizda (28) karsi ruzgar etkin hizi 18 m/s'ye dusurur ve
-    # bu, ruzgarsiz seyir hizindan (22.9) yavastir. Yani garanti edilebilir
-    # en erken varis, ruzgarsiz nominalden GEC olabilir. Kapi tasariminin
-    # hesaba katmasi gereken nokta budur.
+    # rüzgâr zarfı nominal rüzgârsız süreyi içermek zorunda değil
     from oasy_uav_agent.estimation.wind_estimator import WindEstimate, route_duration_with_wind_s
     nominal = route_duration_with_wind_s(
         konum, ROUTE[manager._active_wp_index:],
@@ -1106,7 +1093,7 @@ def test_saglam_pencere_dogru_siralanir():
 
 
 def test_ha3_kapisi_duz_mesafeye_degil_kalan_rota_suffixine_baglidir():
-    """HA-3 kapida hedefe 2.5 km uzaktadir ama rotada >5 km kalir."""
+    """ha3 kapısında kalan rota mesafesinin düz mesafeden büyük olmasını sınar"""
     from dataclasses import replace
     from oasy_uav_agent.estimation.eta_estimator import route_length_m
 
@@ -1138,6 +1125,7 @@ def test_ha3_kapisi_duz_mesafeye_degil_kalan_rota_suffixine_baglidir():
 
 
 def test_terminal_erken_rezervi_biterken_asgari_hiz_zorlanir():
+    """terminal erkenlik rezervi bitince asgari hızın zorlanmasını sınar"""
     import time as _time
     from oasy_uav_agent.estimation.wind_estimator import WindEstimate, route_duration_with_wind_s
 
@@ -1157,6 +1145,7 @@ def test_terminal_erken_rezervi_biterken_asgari_hiz_zorlanir():
 
 
 def test_terminal_gec_rezervi_biterken_azami_hiz_zorlanir():
+    """terminal gecikme rezervi bitince azami hızın zorlanmasını sınar"""
     import time as _time
     from oasy_uav_agent.estimation.wind_estimator import WindEstimate, route_duration_with_wind_s
 
@@ -1177,14 +1166,16 @@ def test_terminal_gec_rezervi_biterken_azami_hiz_zorlanir():
 
 class FakeGuided:
     def __init__(self):
+        """gönderilen guided hedeflerini tutacak listeyi hazırlar"""
         self.sent = []
 
     def send(self, position, altitude_msl_m):
+        """gönderilen guided konum ve irtifa hedefini kaydeder"""
         self.sent.append((position, altitude_msl_m))
 
 
 def cruise_manager(early_s: float, hedefe_mesafe_m: float = 4000.0):
-    """Seyirde, verilen kadar erken, asgari hizda ve hedefe belirli uzaklikta."""
+    """seyirde erken ve düşük hızlı araç durumu kurar"""
     import time as _time
 
     telemetry = FakeTelemetry()
@@ -1196,8 +1187,7 @@ def cruise_manager(early_s: float, hedefe_mesafe_m: float = 4000.0):
         guided_commander=guided,
     )
     reach_cruise(manager, telemetry)
-    # Once ilk waypoint'e gel ki aktif bacak dogru olsun; sapma o bacaga
-    # gore olculuyor.
+    # aktif rota bacağını ilk noktaya ilerletir
     telemetry.set(ROUTE[0], 400.0, 10 * SECOND_NS)
     manager.step()
 
@@ -1215,16 +1205,11 @@ def cruise_manager(early_s: float, hedefe_mesafe_m: float = 4000.0):
 
 
 def test_hiz_yetkisi_varken_loiter_yapilmaz():
-    """Yavaslayarak kapatilabilen erkenlik icin daire cizilmemeli.
-
-    Loiter yalnizca asgari hava hizinda bile kapanmayan erkenlik icindir;
-    madde 8 havada beklemeyi en aza indirmeyi istiyor.
-    """
+    """hızla giderilebilen erkenlikte bekleme yapılmamasını sınar"""
     import time as _time
 
     manager, commander, telemetry, guided = cruise_manager(early_s=0.0)
-    # Seyir hizina gore 30 s erken, ama asgari hizda ucmak bunu fazlasiyla
-    # yutar: kalan rota asgari hizda cok daha uzun surer.
+    # asgari hızın giderebildiği 30 saniyelik erkenlik kurar
     konum = telemetry.current.position
     manager._controller._commanded_mps = manager._config.nominal_cruise_speed_mps
     plan_ns = _time.monotonic_ns() + int(

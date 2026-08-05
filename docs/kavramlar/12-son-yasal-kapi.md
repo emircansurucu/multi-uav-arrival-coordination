@@ -5,7 +5,7 @@
 Belge madde 6 kesin: hedefin **2 kilometrelik yarıçapı içinde bekleme çemberi
 atmak KESİNLİKLE YASAKTIR.**
 
-Bu, zaman kazanmak için elimizdeki en güçlü aracı — loiter'ı — tam ihtiyaç
+Bu, zaman kazanmak için elimizdeki en güçlü aracı, loiter'ı, tam ihtiyaç
 duyduğumuz bölgede yasaklıyor. Erkenlik genellikle son yaklaşmada belli olur,
 ama orada bekleyemeyiz.
 
@@ -30,7 +30,7 @@ Sistemin üç zaman kazanma katmanı var ve **yetkileri giderek daralır**:
 | Hız kontrolü | ±%20 civarı | her yerde |
 
 Kapı, "sınırsız bekleme" yetkisinin **son kullanıldığı yer**. Ondan sonra
-yalnızca hız kalır — ve [07](07-ruzgar-duzeltmeli-rota-suresi.md)'de gösterildiği
+yalnızca hız kalır, ve [07](07-ruzgar-duzeltmeli-rota-suresi.md)'de gösterildiği
 gibi kuyruk rüzgârında hız yetkisi sıfıra inebilir.
 
 **Neden 2.5 km, 2 km değil?** Belge 2 km diyor; biz 500 m emniyet payı bıraktık
@@ -39,7 +39,7 @@ ve araç çemberin dışında kalmalı; ayrıca kestirim hataları var.
 
 ## 3. Nasıl Çalışır? (Adım Adım)
 
-### Adım 1 — Kapıyı bul (görev başında, bir kez)
+### Adım 1 Kapıyı bul (görev başında, bir kez)
 
 ```python
 found = last_circle_entry_on_route(
@@ -51,18 +51,18 @@ found = last_circle_entry_on_route(
 Rotanın 2500 m çemberine **son dıştan-içe girişi**. "Son" kritik: rota çembere
 girip yeniden çıkabilir; geri dönülemez eşik **sonuncusudur**.
 
-### Adım 2 — Terminal sınırlarını hesapla
+### Adım 2 Terminal sınırlarını hesapla
 
 Kapıdan sonraki rota için E ve L:
 
 | Sembol | Anlam |
 |---|---|
-| **E** | Azami hızda, en kötü karşı rüzgârda geçen süre — bundan erken varılamaz |
-| **L** | Asgari hızda, en kötü kuyruk rüzgârında geçen süre — bundan geç varılamaz |
+| **E** | Azami hızda, en kötü karşı rüzgârda geçen süre bundan erken varılamaz |
+| **L** | Asgari hızda, en kötü kuyruk rüzgârında geçen süre bundan geç varılamaz |
 
 Ayrıntısı [14 - Robust E/L Sınırları](14-robust-e-l-sinirlari.md)'nde.
 
-### Adım 3 — Bırakma penceresini türet
+### Adım 3 Bırakma penceresini türet
 
 ```python
 lower_ns = target_arrival_ns - int((terminal_latest_s - early_margin_s) * 1e9)
@@ -74,9 +74,9 @@ upper_ns = target_arrival_ns - int((terminal_earliest_s + late_margin_s) * 1e9)
 
 **Pencere boş olabilir** (`lower > upper`). Bu, seçilen bozucu zarf ve marjlar
 altında kapıdan sonraki kontrol yetkisinin yetersiz olduğunu **açıkça** gösterir
-— sessizce yutulmaz, uyarı üretilir.
+sessizce yutulmaz, uyarı üretilir.
 
-### Adım 4 — Girişte sınırları tazele
+### Adım 4 Girişte sınırları tazele
 
 ```python
 def _refresh_gate_bounds_for_entry(self):
@@ -86,7 +86,7 @@ def _refresh_gate_bounds_for_entry(self):
 Kapı görev başında kurulur ama E/L o an nominal hızla hesaplanır. Araç kapı
 bacağına girdiğinde **ölçülen** hızla bir kez tazelenir.
 
-### Adım 5 — Tetikleme kararı
+### Adım 5 Tetikleme kararı
 
 ```python
 predicted_crossing_ns = now_ns + int(eta_to_gate_s * 1e9)
@@ -99,14 +99,14 @@ if predicted_crossing_ns >= release_ns - GATE_HOLD_TRIGGER_S * 1e9:
 
 Tahmini geçiş anı üst sınırdan **2 saniyeden fazla** erkense loiter başlar.
 
-### Adım 6 — Loiter ve çıkış
+### Adım 6 Loiter ve çıkış
 
 ```python
 self._commander.set_mode("GUIDED")
 self._guided.send(gate.position, self._config.cruise_alt_msl_m)
 ```
 
-Her tick hedef yeniden gönderilir — `/ap/cmd_gps_pose` BEST_EFFORT'tur, tek
+Her tick hedef yeniden gönderilir, `/ap/cmd_gps_pose` BEST_EFFORT'tur, tek
 örnek kaybolursa araç eski hedefe gidebilir.
 
 Üç çıkış koşulu:
@@ -114,12 +114,12 @@ Her tick hedef yeniden gönderilir — `/ap/cmd_gps_pose` BEST_EFFORT'tur, tek
 | Koşul | Sebep |
 |---|---|
 | `now >= release_ns` | Planlanan bırakma anı geldi |
-| `hedefe mesafe <= 2200 m` | Güvenlik payı azaldı — 2 km yasağına yaklaşıyoruz |
+| `hedefe mesafe <= 2200 m` | Güvenlik payı azaldı 2 km yasağına yaklaşıyoruz |
 | `rota sapması >= 400 m` | Madde 4'ün 500 m sınırına yaklaşıyoruz |
 
 Son ikisi **abort** koşullarıdır: zamanlamadan önce kural uyumu gelir.
 
-### Adım 7 — Bir kez
+### Adım 7 Bir kez
 
 ```python
 self._gate_hold_used = True
@@ -164,7 +164,7 @@ $$v_{\min}^{\text{yer}} = 13 + 9 = 22, \qquad v_{\max}^{\text{yer}} = 28 + 9 = 3
 
 $$L - E = 5338\left(\frac{1}{22} - \frac{1}{37}\right) = 5338 \times 0.0184 = 98\ \text{s}$$
 
-Yarıdan fazla kayıp. Rüzgâr arttıkça pencere daralır — **tam ihtiyaç duyulduğu
+Yarıdan fazla kayıp. Rüzgâr arttıkça pencere daralır, **tam ihtiyaç duyulduğu
 anda.**
 
 ### Bırakma anının seçimi
@@ -197,7 +197,7 @@ bırakılırsa terminal fazda o kadar az belirsizlik kalır.
   Kapidan hedefe duz mesafe:   2500 m
 
   DIKKAT: kapi hedefe 2500 m'de ama rota olarak
-  arkasinda 5338 m var — rota ilmek atiyor.
+  arkasinda 5338 m var, rota ilmek atiyor.
   Yani "2 km icinde" olan bolge 4300 m'lik bir ucus.
 ```
 
@@ -228,7 +228,7 @@ flowchart TD
 | `MIN_LOITER_DISTANCE_M` | 2500 m | Belge 2000 m + 500 m emniyet payı |
 | `TERMINAL_RADIUS_M` | 2000 m | Belgenin yasak yarıçapı |
 | `GATE_EARLY_MARGIN_S` | 3 s | Alt sınır payı |
-| `GATE_LATE_MARGIN_S` | 20 s | Üst sınır payı — geç kalmak sıra bozar, erken kalmak bozmaz; asimetri bilinçli |
+| `GATE_LATE_MARGIN_S` | 20 s | Üst sınır payı geç kalmak sıra bozar, erken kalmak bozmaz; asimetri bilinçli |
 | `GATE_HOLD_TRIGGER_S` | 2 s | Bundan az erkenlik için beklemeye değmez |
 | `GATE_TARGET_DISTANCE_ABORT_M` | 2200 m | 2 km yasağına 200 m kala loiter iptal |
 | `GATE_ROUTE_DEVIATION_ABORT_M` | 400 m | Madde 4'ün 500 m sınırına 100 m kala iptal |
@@ -276,7 +276,7 @@ dairesi tamamlanana kadar sürüyor.)
 **Sonuç:** HA-3 − HA-2 = 20.09 s, sapma **+0.09 s**. Kapı erkenliği yasal bölgede
 soğurdu ve terminal faza temiz girildi.
 
-**Karşı örnek — pencerenin boşaldığı durum.** Aynı sistem, eski (gerçek dışı)
+**Karşı örnek, pencerenin boşaldığı durum.** Aynı sistem, eski (gerçek dışı)
 rüzgâr profilinde:
 
 ```
@@ -285,7 +285,7 @@ KAPI PENCERESI BOS: terminal hiz yetkisi secilen zarf ve marjlar icin
 ```
 
 Burada $L - E < 23$ s çıkmıştı; kapı hiç tetiklenemedi. Bu, sistemin
-**sessizce başarısız olmadığını** gösteriyor — yetkisiz kaldığını açıkça
+**sessizce başarısız olmadığını** gösteriyor, yetkisiz kaldığını açıkça
 bildiriyor.
 
 ## 8. Sonuç Nasıl Olur?
@@ -294,7 +294,7 @@ bildiriyor.
 yöneticisi o tick'te başka kontrol uygulamaz.
 
 Loiter GUIDED modda yapılır ve çıkışta AUTO'ya dönülür. Görev listesi
-değişmez — araç kaldığı yerden devam eder.
+değişmez, araç kaldığı yerden devam eder.
 
 Kapı olayları loglanır ve `analyze_run.py` bunları "havada loiter" metriğine
 çevirir (madde 8 uyumluluğu).
@@ -303,8 +303,8 @@ Kapı olayları loglanır ve `analyze_run.py` bunları "havada loiter" metriğin
 
 - **Tek seferlik.** Bir kez kullanıldı mı bitti. İkinci bir erkenlik dalgası
   gelirse çare yok.
-- **Kapıdan sonra kör.** Erkenlik kapı geçildikten sonra doğarsa — ki bu
-  projede ölçüldü, tam olarak böyle oluyor — kapı yapabileceği hiçbir şey yok.
+- **Kapıdan sonra kör.** Erkenlik kapı geçildikten sonra doğarsa ki bu
+  projede ölçüldü, tam olarak böyle oluyor, kapı yapabileceği hiçbir şey yok.
   Üç başarısız koşuda araç kapıya **zamanında** giriyordu (−0.4, −0.3, −8.0 s);
   erkenliğin tamamı sonradan doğdu.
 - **GUIDED loiter yarıçapı kontrolsüz.** ArduPlane `WP_LOITER_RAD` kullanır;
@@ -354,17 +354,17 @@ if (
 
 ## 12. İlgili Kavramlar
 
-- [14 - Robust E/L Sınırları](14-robust-e-l-sinirlari.md) — pencereyi kuran E ve L.
-- [13 - Terminal Rezerv](13-terminal-rezerv.md) — kapıdan sonraki katman.
-- [09 - Jeodezi](09-jeodezi.md) — `last_circle_entry_on_route` ve jeodezik düzeltme.
-- [11 - Varış Zamanı Kontrolcüsü](11-varis-zamani-kontrolcusu.md) — kapıdan sonra kalan tek yetki.
-- [05 - Kalkış Slotu](05-kalkis-slotu-ve-yer-gecikmesi.md) — bedava bekleme; kapı onun havadaki pahalı karşılığı.
+- [14 - Robust E/L Sınırları](14-robust-e-l-sinirlari.md) pencereyi kuran E ve L.
+- [13 - Terminal Rezerv](13-terminal-rezerv.md) kapıdan sonraki katman.
+- [09 - Jeodezi](09-jeodezi.md) `last_circle_entry_on_route` ve jeodezik düzeltme.
+- [11 - Varış Zamanı Kontrolcüsü](11-varis-zamani-kontrolcusu.md) kapıdan sonra kalan tek yetki.
+- [05 - Kalkış Slotu](05-kalkis-slotu-ve-yer-gecikmesi.md) bedava bekleme; kapı onun havadaki pahalı karşılığı.
 
 ## 13. Kaynaklar
 
 - Vaka belgesi madde 6: *"Hedef noktanın etrafındaki 2 kilometrelik yarıçaplı
   alan içinde bekleme çemberi (Loiter/Orbit) atmak KESİNLİKLE YASAKTIR."*
 - Vaka belgesi madde 5: *"Verilen rota üzerindeki ara noktalarda bekleme
-  (Loiter) çemberi atma"* — kapının izin aldığı yöntem.
-- Vaka belgesi madde 8: havada bekleme asgariye indirilmeli — tek seferlik
+  (Loiter) çemberi atma"*, kapının izin aldığı yöntem.
+- Vaka belgesi madde 8: havada bekleme asgariye indirilmeli tek seferlik
   kısıtın gerekçesi.

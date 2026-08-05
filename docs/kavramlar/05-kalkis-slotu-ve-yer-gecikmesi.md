@@ -10,14 +10,14 @@ risk taşır, rota sapması üretir ve belgenin madde 8'i onu açıkça asgariye
 indirmemizi ister. Yerde beklemenin ise hiçbir maliyeti yoktur.
 
 Sezgi: Üç kişi aynı yere farklı mesafelerden yürüyecek ve 20 dakika arayla
-varmaları isteniyor. En yakın olanın erken çıkıp yolda oyalanması saçmadır —
+varmaları isteniyor. En yakın olanın erken çıkıp yolda oyalanması saçmadır
 evde bekler, sonra çıkar. Oyalanmak enerji harcar, evde beklemek harcamaz.
 
 Hesap basittir: **hedefteki varış anından, uçuş süresini geriye say.**
 
 $$t_{\text{kalkış}} = T_{\text{varış}} - t_{\text{uçuş}}$$
 
-Zor kısım $t_{\text{uçuş}}$'tur — rüzgâra bağlıdır ve araç henüz yerdeyken kendi
+Zor kısım $t_{\text{uçuş}}$'tur, rüzgâra bağlıdır ve araç henüz yerdeyken kendi
 rüzgârını ölçemez.
 
 ## 2. Neden Var? Hangi Problemi Çözüyor?
@@ -42,7 +42,7 @@ anlamsızdır. Çözüm: **öncü araç rüzgâr sondası görevi görür.**
 
 ## 3. Nasıl Çalışır? (Adım Adım)
 
-### Adım 1 — Referans varışı bul (`_on_wait_peers`)
+### Adım 1 Referans varışı bul (`_on_wait_peers`)
 
 ```python
 reference = compute_reference_arrival(
@@ -53,7 +53,7 @@ reference = compute_reference_arrival(
 Önündeki araçların **taahhüt edilmiş** varışlarından kendi hedefini türetir
 ([02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md)).
 
-### Adım 2 — Nominal uçuş süresini rüzgâra göre düzelt
+### Adım 2 Nominal uçuş süresini rüzgâra göre düzelt
 
 ```python
 corrected_s = route_duration_with_wind_s(
@@ -67,7 +67,7 @@ Yerdeki araç için bu daima peer'ınkidir.
 
 Düzeltme %1'den küçükse uygulanmaz (gürültü kovalamamak için).
 
-### Adım 3 — Taahhüt et ve kalkış anını hesapla (`_commit`)
+### Adım 3 Taahhüt et ve kalkış anını hesapla (`_commit`)
 
 ```python
 takeoff_ns = compute_takeoff_time(planned_arrival_ns, self._nominal_flight_s)
@@ -76,13 +76,13 @@ takeoff_ns = compute_takeoff_time(planned_arrival_ns, self._nominal_flight_s)
 Bu an artık **kilitlidir**: peer'lar yalnızca taahhüt edilmiş değeri referans
 alır. Anlık ETA'ya bağlanmak öncünün tahmin gürültüsünü zincirleme büyütürdü.
 
-### Adım 4 — Öncünün özel durumu
+### Adım 4 Öncünün özel durumu
 
 ```python
 elif self._is_leader():
     # Oncu arac taahhudunu burada degil, gercekten kalktigi anda verir.
-    # Ilk arm isleminde EKF oturmasi 15 saniyeye kadar surebiliyor ve bu
-    # sure plana girerse takipciler oncuyle ayni anda kalkiyor.
+    # ilk arm'da EKF oturması 15 saniyeyi bulabiliyor; bu süre plana girerse
+    # takipçiler öncüyle aynı anda kalkıyor
     self._takeoff_time_ns = now_ns
 ```
 
@@ -90,7 +90,7 @@ elif self._is_leader():
 sonra** verir. Neden: ilk arm işleminde EKF oturması 15 saniyeye kadar sürebilir.
 Bu süre plana girerse takipçiler öncüyle aynı anda kalkar ve tüm takvim çöker.
 
-### Adım 5 — Yerde beklerken slotu yeniden senkronize et
+### Adım 5 Yerde beklerken slotu yeniden senkronize et
 
 ```python
 def _resync_takeoff_slot(self, now_ns):
@@ -101,11 +101,11 @@ def _resync_takeoff_slot(self, now_ns):
     )
 ```
 
-**Bu adım kritiktir.** Taahhüt anı çok erkendir — öncü henüz havalanmamıştır,
+**Bu adım kritiktir.** Taahhüt anı çok erkendir, öncü henüz havalanmamıştır,
 dolayısıyla rüzgâr kestirimi yoktur. Düzeltme yalnızca `WAIT_PEERS`'te yapılsaydı
 **hiçbir zaman uygulanmazdı**. Bu yüzden slot her tick'te yeniden türetilir.
 
-### Adım 6 — Zamanı gelince kalk
+### Adım 6 Zamanı gelince kalk
 
 ```python
 if time.monotonic_ns() >= self._takeoff_time_ns:
@@ -125,7 +125,7 @@ düzeltmeli rota süresi ([07](07-ruzgar-duzeltmeli-rota-suresi.md)).
 
 $$t_{\text{bekleme},i} = \max\left(0,\; t_{\text{kalkış},i} - t_{\text{şimdi}}\right)$$
 
-Negatifse slot geçmişte kalmıştır — araç hemen kalkar ve fark hız kontrolüyle
+Negatifse slot geçmişte kalmıştır, araç hemen kalkar ve fark hız kontrolüyle
 kapatılmaya çalışılır. Bu durum `LATE_TAKEOFF_TOLERANCE_S = 1.0` s'yi aşarsa
 uyarı üretilir.
 
@@ -138,7 +138,7 @@ $$t_{\text{rüzgârsız}} = \frac{9269}{22.9} = 405\ \text{s}$$
 9.4 m/s rüzgâr altında bacak bacak hesap yapıldığında süre **iki katına**
 yaklaşabilir ([07](07-ruzgar-duzeltmeli-rota-suresi.md#5-geometrikgörsel-sezgi)
 tablosu). Düzeltme yapılmazsa araç yüzlerce saniye erken kalkar ve hatayı havada
-kapatmaya çalışır — kapatamaz.
+kapatmaya çalışır, kapatamaz.
 
 ### Neden yerde beklemek "bedava"
 
@@ -201,7 +201,7 @@ flowchart TD
 |---|---|---|
 | `nominal_cruise_speed_mps` | 22.9 | Rüzgârsız seyir hızı, SITL ölçümünden. Yanlışsa tüm slotlar kayar. |
 | `LATE_TAKEOFF_TOLERANCE_S` | 1.0 s | Slot geçmişte kaldığında uyarı eşiği. |
-| Düzeltme eşiği | %1 (`rel_tol=0.01`) | Bundan küçük değişimde nominal süre güncellenmez — gürültü kovalamayı engeller. |
+| Düzeltme eşiği | %1 (`rel_tol=0.01`) | Bundan küçük değişimde nominal süre güncellenmez gürültü kovalamayı engeller. |
 | Öncü tanımı | `vehicle_id == 1` | Belge sırasından. |
 
 ## 7. Çalışılmış Örnek (Gerçek Sayılarla)
@@ -232,7 +232,7 @@ $$t_{\text{kalkış},3} = 573 - 405 = \mathbf{168\ s}$$
 
 | Araç | Hesaplanan | Ölçülen | Fark |
 |---|---|---|---|
-| HA-1 | 0 s | 0.0 s | — |
+| HA-1 | 0 s | 0.0 s | yok |
 | HA-2 | 15 s | 14.5 s | 0.5 s |
 | HA-3 | 168 s | 168.1 s | **0.1 s** |
 
@@ -241,13 +241,13 @@ ve arm süresinden geliyor.
 
 **Dikkat çekici nokta.** HA-2'nin rotası HA-1'inkinden **daha uzun** (12329 vs
 12205 m) ama ikinci varması gerekiyor. Bu, kalkış gecikmesini küçültür: yalnızca
-15 saniye. HA-3 ise en kısa rotaya sahip ama en son varmalı — bu yüzden 168
+15 saniye. HA-3 ise en kısa rotaya sahip ama en son varmalı, bu yüzden 168
 saniye bekliyor.
 
 Yani yer gecikmesi rota uzunluğuyla değil, **rota uzunluğu ile sıra
 gereksinimi arasındaki uyumsuzlukla** belirleniyor.
 
-**Rüzgâr düzeltmesinin etkisi — aynı rüzgâr, zıt yönde düzeltme.** Öncü
+**Rüzgâr düzeltmesinin etkisi, aynı rüzgâr, zıt yönde düzeltme.** Öncü
 havalanınca kestirimini yayınlıyor ve yerdeki araçlar sürelerini düzeltiyor.
 Aynı andaki iki log satırı:
 
@@ -262,7 +262,7 @@ Aynı andaki iki log satırı:
 30 saniye **kısalıyor**, HA-3'ünki 13 saniye **uzuyor**.
 
 Sebebi rota geometrisi. Rüzgâr 268°'den geliyor, yani doğuya doğru esiyor.
-HA-1'in rotası ağırlıklı olarak kuzeydoğuya, HA-3'ünki kuzeybatıya bakıyor —
+HA-1'in rotası ağırlıklı olarak kuzeydoğuya, HA-3'ünki kuzeybatıya bakıyor
 biri rüzgârı arkasına alıyor, diğeri karşısına.
 
 Bu, "rüzgâr düzeltmesi" denen şeyin neden tek bir katsayı olamayacağını
@@ -289,7 +289,7 @@ onların referans hesabına girer. Bu, zincirin bir sonraki halkasını kurar.
   havalanmadan hiçbir düzeltme yapılamaz; ilk taahhüt rüzgârsız varsayımla
   kurulur ve sonra düzeltilir.
 - **Öncü kendi rüzgârını bilmez.** HA-1 kalkarken hiç rüzgâr bilgisi yoktur.
-  Nominal süresi rüzgârsız hesaplanır ve uçuş sırasında düzeltilir — ama kalkış
+  Nominal süresi rüzgârsız hesaplanır ve uçuş sırasında düzeltilir, ama kalkış
   anı çoktan geçmiştir. Öncünün hatası zincirin tamamına yayılır.
 - **Geçmiş slot telafi edilemez.** Kalkış anı geçmişte kalırsa araç geç kalkar
   ve farkı hızla kapatmaya çalışır. 15 saniyeden büyük bir gecikme kapatılamaz.
@@ -315,9 +315,8 @@ Slotun her tick'te yeniden türetilmesi ve gerekçesi:
 
 ```python
 def _on_wait_takeoff_slot(self) -> None:
-    # Yerde beklerken ruzgar olcumu gelebilir; slot ona gore guncellenir.
-    # Taahhut ani cok erken oldugu icin (oncu daha havalanmadan) duzeltme
-    # yalnizca WAIT_PEERS'te yapilsaydi hicbir zaman uygulanmazdi.
+    # yerde beklerken gelen rüzgâr ölçümü slotu günceller; taahhüt anı erken
+    # olduğu için düzeltme yalnızca WAIT_PEERS'te yapılsaydı hiç uygulanmazdı
     self._resync_takeoff_slot(time.monotonic_ns())
     if time.monotonic_ns() >= self._takeoff_time_ns:
         self._transition(MissionState.ARMING)
@@ -328,23 +327,23 @@ def _on_wait_takeoff_slot(self) -> None:
 ```python
 elif self._is_leader():
     # Oncu arac taahhudunu burada degil, gercekten kalktigi anda verir.
-    # Ilk arm isleminde EKF oturmasi 15 saniyeye kadar surebiliyor ve bu
-    # sure plana girerse takipciler oncuyle ayni anda kalkiyor.
+    # ilk arm'da EKF oturması 15 saniyeyi bulabiliyor; bu süre plana girerse
+    # takipçiler öncüyle aynı anda kalkıyor
     with self._lock:
         self._takeoff_time_ns = now_ns
 ```
 
 ## 12. İlgili Kavramlar
 
-- [02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md) — referans varışı üretir.
-- [07 - Rüzgâr Düzeltmeli Rota Süresi](07-ruzgar-duzeltmeli-rota-suresi.md) — uçuş süresini hesaplar.
-- [06 - Rüzgâr Kestirimi](06-ruzgar-kestirimi.md) — öncünün sonda görevi.
-- [04 - Plan Revizyonu](04-plan-revizyonu.md) — kalkıştan sonra planın rüzgârla düzeltilmesi.
-- [01 - Görev Durum Makinesi](01-gorev-durum-makinesi.md) — `WAIT_PEERS` → `WAIT_TAKEOFF_SLOT` → `ARMING` akışı.
+- [02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md) referans varışı üretir.
+- [07 - Rüzgâr Düzeltmeli Rota Süresi](07-ruzgar-duzeltmeli-rota-suresi.md) uçuş süresini hesaplar.
+- [06 - Rüzgâr Kestirimi](06-ruzgar-kestirimi.md) öncünün sonda görevi.
+- [04 - Plan Revizyonu](04-plan-revizyonu.md) kalkıştan sonra planın rüzgârla düzeltilmesi.
+- [01 - Görev Durum Makinesi](01-gorev-durum-makinesi.md) `WAIT_PEERS` → `WAIT_TAKEOFF_SLOT` → `ARMING` akışı.
 
 ## 13. Kaynaklar
 
 - Vaka belgesi madde 5: *"Farklı zamanlarda kalkış yapma (Kalkış geciktirme)."*
 - Vaka belgesi madde 8: *"havada kalma / bekleme süreleri en az olacak şekilde
-  optimal senaryo"* — yerde beklemeyi tercih etmenin gerekçesi.
-- Doğrulama koşusu `logs/run_20260804_172043` — ölçülen yer beklemeleri.
+  optimal senaryo"*, yerde beklemeyi tercih etmenin gerekçesi.
+- Doğrulama koşusu `logs/run_20260804_172043` ölçülen yer beklemeleri.

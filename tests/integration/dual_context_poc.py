@@ -1,20 +1,5 @@
 #!/usr/bin/env python3
-"""G1 kapisi: tek surecte iki rclpy context'inin dogrulanmasi.
-
-Ana agent mimarisi, arac telemetrisini araca ozel domain'den (DDS_DOMAIN_ID),
-koordinasyon trafigini ise ortak domain'den tasimaya dayaniyor. Tek surecte
-iki context ve iki executor calistirmak resmi olarak garanti edilmis bir
-kullanim degil; bu yuzden agent gelistirilmeden once burada dogrulanir.
-
-Sinanan sartlar:
-  1. Arac context'i araca ozel domain'den /ap telemetrisini alir.
-  2. Koordinasyon context'i ortak domain'de kendi yayinini alir.
-  3. Iki domain birbirine sizmaz.
-  4. Iki executor da temiz kapanir, thread'ler join olur.
-
-Kullanim: tests/integration/dual_context_poc.py [--vehicle-domain 1] [--seconds 12]
-SITL calismiyorsa 1. sart atlanir, digerleri yine sinanir.
-"""
+"""tek süreçte iki rclpy bağlamını ve alan ayrımını doğrular"""
 from __future__ import annotations
 
 import argparse
@@ -31,11 +16,9 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from rclpy.signals import SignalHandlerOptions
 from std_msgs.msg import String
 
-COORDINATION_DOMAIN_ID = 10
-# Bu konu yalnizca arac domain'inde yayinlanir; koordinasyon context'inde
-# gorulmesi domain izolasyonunun bozuldugu anlamina gelir.
-LEAK_PROBE_TOPIC = "/oasy_poc/leak_probe"
-COORDINATION_TOPIC = "/oasy_poc/coordination"
+COORDINATION_DOMAIN_ID = 10  # ortak koordinasyon alanı
+LEAK_PROBE_TOPIC = "/oasy_poc/leak_probe"  # alan sızıntısı denetim konusu
+COORDINATION_TOPIC = "/oasy_poc/coordination"  # koordinasyon denetim konusu
 
 
 @dataclass
@@ -48,11 +31,12 @@ class Counters:
 
 
 def build_vehicle_side(context: rclpy.Context, counters: Counters):
-    """Arac domain'i: /ap telemetrisi + sizinti sondasi yayini."""
+    """araç alanındaki telemetri ve sızıntı yayınını kurar"""
     node = rclpy.create_node("poc_vehicle", context=context)
     best_effort = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
 
     def on_geopose(msg: GeoPoseStamped) -> None:
+        """gelen telemetri sayısını ve son enlemi kaydeder"""
         counters.telemetry += 1
         counters.last_latitude = msg.pose.position.latitude
 
@@ -63,7 +47,7 @@ def build_vehicle_side(context: rclpy.Context, counters: Counters):
 
 
 def build_coordination_side(context: rclpy.Context, counters: Counters):
-    """Koordinasyon domain'i: kendi yayini + sizinti sondasi dinleyicisi."""
+    """koordinasyon alanındaki yayın ve sızıntı dinleyicisini kurar"""
     node = rclpy.create_node("poc_coordination", context=context)
     best_effort = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
 
@@ -83,10 +67,12 @@ def build_coordination_side(context: rclpy.Context, counters: Counters):
 
 
 def spin_in_thread(executor: SingleThreadedExecutor, counters: Counters) -> threading.Thread:
+    """ros çalıştırıcısını ayrı bir thread içinde başlatır"""
     def run() -> None:
+        """çalıştırıcıyı döndürür ve oluşan hatayı kaydeder"""
         try:
             executor.spin()
-        except Exception as exc:  # noqa: BLE001 - kapanis hatalarini rapora tasiyoruz
+        except Exception as exc:  # noqa: BLE001
             counters.errors.append(f"{executor}: {exc}")
 
     thread = threading.Thread(target=run, daemon=False)
@@ -95,6 +81,7 @@ def spin_in_thread(executor: SingleThreadedExecutor, counters: Counters) -> thre
 
 
 def main() -> int:
+    """iki ros bağlamını kurup alan ayrımı denemesini çalıştırır"""
     parser = argparse.ArgumentParser(description="G1 cift-context dogrulamasi")
     parser.add_argument("--vehicle-domain", type=int, default=1)
     parser.add_argument("--seconds", type=float, default=12.0)
@@ -144,6 +131,7 @@ def main() -> int:
 
 
 def report(counters: Counters, threads: list, shutdown_s: float) -> int:
+    """alan ayrımı ve kapanış kontrollerinin sonucunu yazdırır"""
     alive = [t for t in threads if t.is_alive()]
     telemetry_ok = counters.telemetry > 0
     checks = {

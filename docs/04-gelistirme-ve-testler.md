@@ -2,7 +2,7 @@
 
 > Vaka belgesi, teknik raporda **"Geliştirme süreci, test adımları, karşılaşılan
 > problemler ve test sonuçları"** başlığını istiyor. Bu bölüm o başlığın
-> karşılığıdır ve bilinçli olarak **başarısızlıkları da içerir** — bir sistemin
+> karşılığıdır ve bilinçli olarak **başarısızlıkları da içerir**, bir sistemin
 > nasıl çalıştığını anlamanın en hızlı yolu, neyin çalışmadığını görmektir.
 
 ## 4.1 Doğrulama Yöntemi
@@ -27,15 +27,15 @@ ayrıca agent loglarını ayrıştırıp bekleme sürelerini ve sapmaları çık
 |---|---|---|
 | **Sakin** | yok | Temel doğruluk |
 | **Sabit** | 8 m/s, sabit yön | Sürekli bozucu |
-| **Değişken** | 4–10 m/s, 0.50 °/s dönüş | Madde 7 |
-| *Uç durum* | 4–10 m/s, **5.5 °/s** dönüş | Algoritmanın sınırı |
+| **Değişken** | 4-10 m/s, 0.50 °/s dönüş | Madde 7 |
+| *Uç durum* | 4-10 m/s, **5.5 °/s** dönüş | Algoritmanın sınırı |
 
 Uç durum varsayılan değildir; `--extreme` bayrağıyla çalıştırılır ve raporda
 sınır göstergesi olarak kullanılır ([16](kavramlar/16-ruzgar-profili-ve-gercekcilik.md)).
 
 ### Birim testler
 
-201 birim testi, uçuş gerektirmeyen mantığı kapsar: çıpa hesabı, tazelik
+161 birim testi, uçuş gerektirmeyen mantığı kapsar: çıpa hesabı, tazelik
 sınıflaması, jeodezi, varış tespiti, kontrolcü sınırlayıcıları, kapı penceresi,
 görev üretimi.
 
@@ -45,7 +45,7 @@ python3 -m pytest tests/unit -q
 
 ## 4.2 Test Sonuçları
 
-Mevcut derlemeyle, senaryo başına iki koşu — **altısı da geçti**:
+Mevcut derlemeyle, senaryo başına iki koşu, **altısı da geçti**:
 
 | Senaryo | Koşu 1 | Koşu 2 | Havada bekleme |
 |---|---|---|---|
@@ -59,7 +59,7 @@ Diğer ölçütler tüm koşularda sağlandı:
 |---|---|---|
 | Hedefe yaklaşma | 4.99 m | 5 m |
 | Rota sapması | 127 m | 500 m |
-| Varış sırası | doğru | — |
+| Varış sırası | doğru | yok |
 
 **Zorlu koşulun gerçekten yaşandığının doğrulanması.** Değişken rüzgâr
 koşularında HA-3'ün son bacağında ölçülen rüzgâr:
@@ -89,7 +89,7 @@ senaryosunda ve yalnızca yasal kapı loiteri olarak ortaya çıkıyor.
 Bu bölüm, geliştirme sürecinde ölçülerek bulunan kök nedenleri içerir. Her biri
 belirtiyi değil **sebebi** anlatır.
 
-### Problem 1 — Ölçülen hıza bölmek (±15 s salınım)
+### Problem 1 Ölçülen hıza bölmek (±15 s salınım)
 
 **Belirti:** ETA sürekli salınıyor, hız komutu titriyor, plan yeniden kuruluyor.
 
@@ -104,25 +104,25 @@ Araç dönüşte bacak doğrultusundan 40° saparsa ilerleme hızı 19.7 m/s'ye 
 
 $$\text{ETA}_{\text{dönüşte}} = \frac{2504}{19.7} = 127.1\ \text{s}$$
 
-**30 saniyelik hayalî gecikme** — araç aynı yerde, aynı hızda.
+**30 saniyelik hayalî gecikme**, araç aynı yerde, aynı hızda.
 
 **Çözüm:** rüzgâr düzeltmeli model tabanlı hesap. **Salınım ±15 s → ±0.7 s.**
 
 Bu tek düzeltme üç ayrı belirtiyi birden kapattı; hepsi aynı kök nedendendi.
 
-### Problem 2 — Rüzgâr kestiriminin üç katmanlı hatası
+### Problem 2 Rüzgâr kestiriminin üç katmanlı hatası
 
-**Katman A — mimari yanlış anlama.** Bizim hesabımızın cebirsel olarak EKF'in
+**Katman A, mimari yanlış anlama.** Bizim hesabımızın cebirsel olarak EKF'in
 kendi rüzgâr durumunu geri okuduğu geç fark edildi. Sonuç: filtreyi iyileştirmek
 işe yaramıyor, **EKF'i ayarlamak** gerekiyor.
 
-**Katman B — `ARSPD_USE = 0`.** Hava hızı sensörü EKF füzyonuna kapalıyken EKF
+**Katman B, `ARSPD_USE = 0`.** Hava hızı sensörü EKF füzyonuna kapalıyken EKF
 rüzgârı yalnızca GPS ve manevralardan çıkarmaya çalışıyordu.
 
-> Ölçülen: SITL rüzgârı 5 m/s 45°'den iken kestirim **4.2 m/s 215°'den** — yön
+> Ölçülen: SITL rüzgârı 5 m/s 45°'den iken kestirim **4.2 m/s 215°'den**, yön
 > 170° ters.
 
-**Katman C — `EK3_WIND_P_NSE = 0.1`.** EKF rüzgâr durumunu çok yavaş
+**Katman C, `EK3_WIND_P_NSE = 0.1`.** EKF rüzgâr durumunu çok yavaş
 güncelliyordu.
 
 > Ölçülen: gerçek rüzgâr değişmişken kestirim 5.2 m/s 52°'de takılı kaldı; son
@@ -130,7 +130,7 @@ güncelliyordu.
 
 **Çözüm:** `ARSPD_USE 1`, `EK3_WIND_P_NSE 1.0`.
 
-### Problem 3 — Gövde→ENU dönüşünde pitch ihmali
+### Problem 3 Gövde→ENU dönüşünde pitch ihmali
 
 **Belirti:** tırmanışta rüzgâr zayıf ölçülüyor.
 
@@ -142,7 +142,7 @@ yayınladığı vektör ise EKF tarafından **tam yönelimle** (roll+pitch+yaw) 
 
 **Çözüm:** tam kuaterniyon dönüşü.
 
-### Problem 4 — Hız değişim limiti (%98.5 doygunluk)
+### Problem 4 Hız değişim limiti (%98.5 doygunluk)
 
 **Belirti:** araç düzeltmeyi yetiştiremiyor; son bacakta erkenlik kapanmıyor.
 
@@ -159,7 +159,7 @@ tamamında doygundu.
 
 **Çözüm:** 0.5 → 1.5 m/s².
 
-### Problem 5 — Bayat peer verisi (12 saniye)
+### Problem 5 Bayat peer verisi (12 saniye)
 
 **Belirti:** varmış bir aracın donmuş rüzgâr kestirimi hâlâ kullanılıyordu.
 
@@ -168,10 +168,10 @@ kalıyordu.
 
 **Maliyet:** 12 saniye zamanlama hatası.
 
-**Çözüm:** yayınlanan alan tazelik bilgisi taşımalı — bayrak yalnızca araç
+**Çözüm:** yayınlanan alan tazelik bilgisi taşımalı, bayrak yalnızca araç
 havadayken ve kestirim oturmuşken doğru.
 
-### Problem 6 — Takipçinin kendi rüzgârıyla düzeltme yapması
+### Problem 6 Takipçinin kendi rüzgârıyla düzeltme yapması
 
 **Belirti:** HA-2 nominal süresini 538 → 728 s yaptı, HA-2 − HA-1 arası **105
 saniyeye** çıktı.
@@ -184,7 +184,7 @@ kalıcılaşıyor.
 taahhüdündeki kaymayı izler. Yerdeki araç ölçümü tekrar tekrar düzeltebildiği
 için yakınsıyor.
 
-### Problem 7 — Kendi testimizin gerçek dışı olması
+### Problem 7 Kendi testimizin gerçek dışı olması
 
 **Bu, en pahalı problemdi** çünkü haftalarca **belirtiyi kovaladık.**
 
@@ -197,8 +197,8 @@ Gerçek atmosferle karşılaştırma:
 | Durum | Dönüş hızı |
 |---|---|
 | Sakin hava | < 0.1 °/s |
-| Cephe geçişi | 0.2–0.5 °/s |
-| Fırtına çıkış cephesi | 1.5–3 °/s |
+| Cephe geçişi | 0.2-0.5 °/s |
+| Fırtına çıkış cephesi | 1.5-3 °/s |
 | **Bizim profil** | **5.5 °/s, 12 dakikada dört kez** |
 
 Yani "değişken rüzgâr" değil, **arka arkaya dört fırtına çıkış cephesi** simüle
@@ -212,10 +212,10 @@ ediyorduk. Gerçek harekâtta o koşulda uçuş iptal edilir.
 | Hız değişim limitini artırmak | Gerçek kusurdu (%98.5 doygunluk) ama **tek başına yetmedi** |
 | S-manevrası eklemek | Üç koşuda da sırayı **bozdu** |
 
-**Çözüm:** profili cephe geçişi seviyesine indirmek — 30° adım, `SIM_WIND_TC`
+**Çözüm:** profili cephe geçişi seviyesine indirmek, 30° adım, `SIM_WIND_TC`
 20→60 s, tepe **0.50 °/s**.
 
-**Kritik nokta: test zayıflamadı.** Rüzgâr hızları (4–10 m/s, Beaufort 3–5)
+**Test zayıflamadı.** Rüzgâr hızları (4-10 m/s, Beaufort 3-5)
 değişmedi ve yeni profil son bacakta kuyruk rüzgârını **daha uzun süre**
 üretiyor:
 
@@ -263,7 +263,7 @@ void ModeGuided::navigate() {
 ```
 
 ```cpp
-// ArduPlane/commands.cpp:81,97 — set_guided_WP
+// ArduPlane/commands.cpp:81,97, set_guided_WP
 prev_WP_loc = current_loc;        // bacak baslangicini simdiki konuma tasir
 auto_state.crosstrack = false;    // "disable crosstrack, head directly to the point"
 ```
@@ -354,6 +354,6 @@ Süreç boyunca izlenen ilkeler:
 - [01 - Sistem Mimarisi](01-sistem-mimarisi.md)
 - [02 - Haberleşme Akışı](02-haberlesme-akisi.md)
 - [03 - Algoritmalar](03-algoritmalar.md)
-- [16 - Rüzgâr Profili ve Gerçekçilik](kavramlar/16-ruzgar-profili-ve-gercekcilik.md) — Problem 7'nin ayrıntısı
-- [11 - Varış Zamanı Kontrolcüsü](kavramlar/11-varis-zamani-kontrolcusu.md) — Problem 4'ün ayrıntısı
-- [04 - Plan Revizyonu](kavramlar/04-plan-revizyonu.md) — Problem 6'nın ayrıntısı
+- [16 - Rüzgâr Profili ve Gerçekçilik](kavramlar/16-ruzgar-profili-ve-gercekcilik.md) Problem 7'nin ayrıntısı
+- [11 - Varış Zamanı Kontrolcüsü](kavramlar/11-varis-zamani-kontrolcusu.md) Problem 4'ün ayrıntısı
+- [04 - Plan Revizyonu](kavramlar/04-plan-revizyonu.md) Problem 6'nın ayrıntısı

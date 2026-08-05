@@ -1,4 +1,4 @@
-"""Merkeziyetsiz varis zamanlamasi sozlesmesi testleri."""
+"""merkeziyetsiz varış zamanlamasını sınar"""
 import pytest
 
 from oasy_uav_agent.coordination.arrival_schedule import (
@@ -8,29 +8,31 @@ from oasy_uav_agent.coordination.arrival_schedule import (
     compute_takeoff_time,
 )
 
-BASE_NS = 1_000_000_000_000
-SEPARATION_NS = int(ARRIVAL_SEPARATION_S * NANOSECONDS_PER_SECOND)
+BASE_NS = 1_000_000_000_000  # testlerde kullanılan taban an
+SEPARATION_NS = int(ARRIVAL_SEPARATION_S * NANOSECONDS_PER_SECOND)  # varış aralığı
 
 
 def test_dokuman_ayrimi_yirmi_saniye():
+    """zorunlu varış ayrımının yirmi saniye olmasını sınar"""
     assert ARRIVAL_SEPARATION_S == 20.0
 
 
 def test_oncu_aracin_referansi_yok():
-    """HA-1 kimseyi takip etmez; kendi nominal planini uygular."""
+    """ha1 aracının kendi nominal planını kullanmasını sınar"""
     result = compute_reference_arrival(1, {2: BASE_NS, 3: BASE_NS})
     assert not result.resolved
     assert result.source_vehicle_ids == ()
 
 
 def test_ha2_ha1den_yirmi_saniye_sonra():
+    """ha2 planının ha1 varışından yirmi saniye sonra kurulmasını sınar"""
     result = compute_reference_arrival(2, {1: BASE_NS})
     assert result.monotonic_ns == BASE_NS + SEPARATION_NS
     assert result.source_vehicle_ids == (1,)
 
 
 def test_ha3_iki_kisitin_gec_olanini_secer():
-    """HA-2 zamaninda ise baglayici kisit HA-2 + 20'dir."""
+    """ha2 zamanındaysa kendi planının bağlayıcı olmasını sınar"""
     committed = {1: BASE_NS, 2: BASE_NS + SEPARATION_NS}
     result = compute_reference_arrival(3, committed)
     assert result.monotonic_ns == BASE_NS + 2 * SEPARATION_NS
@@ -38,45 +40,48 @@ def test_ha3_iki_kisitin_gec_olanini_secer():
 
 
 def test_ha3_ha2_erken_planlarsa_ha1_kisiti_baglayici():
-    """HA-2 kendi planini cok erkene koyarsa HA-1 + 40 devreye girer."""
+    """erken ha2 planında ha1 kısıtının uygulanmasını sınar"""
     committed = {1: BASE_NS, 2: BASE_NS + 5 * NANOSECONDS_PER_SECOND}
     result = compute_reference_arrival(3, committed)
     assert result.monotonic_ns == BASE_NS + 2 * SEPARATION_NS
 
 
 def test_ha3_ha2_kayipsa_ha1e_duser():
-    """Peer kaybinda kalan kisit gecerli kalir."""
+    """araç kaybında kalan kısıtın korunmasını sınar"""
     result = compute_reference_arrival(3, {1: BASE_NS})
     assert result.monotonic_ns == BASE_NS + 2 * SEPARATION_NS
     assert result.source_vehicle_ids == (1,)
 
 
 def test_ha3_ha1_kayipsa_ha2ye_duser():
+    """ha1 kaybında ha3 aracının ha2 planını kullanmasını sınar"""
     result = compute_reference_arrival(3, {2: BASE_NS})
     assert result.monotonic_ns == BASE_NS + SEPARATION_NS
     assert result.source_vehicle_ids == (2,)
 
 
 def test_taahhut_yoksa_referans_cozulmez():
+    """önceki araç taahhüdü yokken referans oluşmamasını sınar"""
     result = compute_reference_arrival(2, {})
     assert not result.resolved
 
 
 def test_sonraki_araclar_referansi_etkilemez():
-    """HA-2, HA-3'u dinlemez; sira asla tersine donmez."""
+    """ha2 aracının ha3 planından etkilenmemesini sınar"""
     sadece_onceki = compute_reference_arrival(2, {1: BASE_NS})
     sonraki_de_var = compute_reference_arrival(2, {1: BASE_NS, 3: BASE_NS})
     assert sadece_onceki.monotonic_ns == sonraki_de_var.monotonic_ns
 
 
 def test_kalkis_zamani_ucus_suresi_kadar_once():
+    """kalkış anının varıştan uçuş süresi kadar önce olmasını sınar"""
     arrival_ns = BASE_NS
     takeoff_ns = compute_takeoff_time(arrival_ns, 533.0)
     assert (arrival_ns - takeoff_ns) / NANOSECONDS_PER_SECOND == pytest.approx(533.0)
 
 
 def test_ucus_sureleri_farkliysa_yer_beklemesi_farkli():
-    """HA-3'un rotasi kisa oldugu icin yerde daha uzun beklemeli."""
+    """kısa rotalı ha3 aracının yerde daha uzun beklemesini sınar"""
     ha1_arrival = BASE_NS
     ha3_arrival = compute_reference_arrival(3, {1: ha1_arrival}).monotonic_ns
 
@@ -88,31 +93,31 @@ def test_ucus_sureleri_farkliysa_yer_beklemesi_farkli():
 
 
 def test_capa_en_yavas_araca_gore_belirlenir():
-    """Ulasilamayan bir plan varsa capa o araca gore geriye kayar."""
+    """ulaşılamayan planda çıpanın yavaş araca göre kurulmasını sınar"""
     from oasy_uav_agent.coordination.arrival_schedule import (
         compute_feasible_anchor,
         target_arrival,
     )
 
-    # HA-2 ancak BASE+80'de varabiliyor (ruzgar); HA-1 ve HA-3 daha erken.
+    # ha2 için ulaşılabilen varış anı taban artı 80 saniye
     feasible = {
         1: BASE_NS,
         2: BASE_NS + 80 * NANOSECONDS_PER_SECOND,
         3: BASE_NS + 30 * NANOSECONDS_PER_SECOND,
     }
     anchor = compute_feasible_anchor(feasible)
-    # HA-2 adayi: BASE+80-20 = BASE+60, en gec olan bu.
+    # ha2 çıpa adayı taban artı 60 saniye
     assert anchor == BASE_NS + 60 * NANOSECONDS_PER_SECOND
 
     hedefler = {vid: target_arrival(anchor, vid) for vid in (1, 2, 3)}
     assert hedefler[2] - hedefler[1] == SEPARATION_NS
     assert hedefler[3] - hedefler[2] == SEPARATION_NS
-    # HA-2'nin hedefi kendi ulasabilecegi ana esit olmali.
+    # ha2 hedefi ulaşılabilen varış anına eşit olmalı
     assert hedefler[2] == feasible[2]
 
 
 def test_capa_tum_araclarda_ayni_sonucu_verir():
-    """Merkeziyetsizlik: ayni veriyi goren her arac ayni capayi bulur."""
+    """aynı veriyi gören araçların aynı çıpayı bulmasını sınar"""
     from oasy_uav_agent.coordination.arrival_schedule import compute_feasible_anchor
 
     feasible = {1: BASE_NS, 2: BASE_NS + 45 * NANOSECONDS_PER_SECOND, 3: BASE_NS}
@@ -120,6 +125,7 @@ def test_capa_tum_araclarda_ayni_sonucu_verir():
 
 
 def test_capa_tek_arac_verisiyle_de_hesaplanir():
+    """ortak çıpanın tek araç verisiyle de hesaplanmasını sınar"""
     from oasy_uav_agent.coordination.arrival_schedule import compute_feasible_anchor
 
     assert compute_feasible_anchor({3: BASE_NS}) == BASE_NS - 2 * SEPARATION_NS
@@ -130,6 +136,7 @@ def test_capa_tek_arac_verisiyle_de_hesaplanir():
 
 
 def test_kapi_gecis_penceresi_hedef_suresinden_turetilir():
+    """kapı geçiş penceresinin hedef varıştan doğru hesaplanmasını sınar"""
     from oasy_uav_agent.coordination.arrival_schedule import compute_gate_release_window
 
     S = NANOSECONDS_PER_SECOND
@@ -143,6 +150,7 @@ def test_kapi_gecis_penceresi_hedef_suresinden_turetilir():
 
 
 def test_kapi_penceresi_kontrol_yetkisi_yoksa_bostur():
+    """terminal hız yetkisi yokken kapı penceresinin boş olmasını sınar"""
     from oasy_uav_agent.coordination.arrival_schedule import compute_gate_release_window
 
     lower, upper = compute_gate_release_window(
@@ -152,6 +160,7 @@ def test_kapi_penceresi_kontrol_yetkisi_yoksa_bostur():
 
 
 def test_kapi_penceresi_negatif_marji_reddeder():
+    """negatif kapı güvenlik marjının reddedilmesini sınar"""
     from oasy_uav_agent.coordination.arrival_schedule import compute_gate_release_window
 
     with pytest.raises(ValueError):

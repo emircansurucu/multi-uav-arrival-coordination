@@ -1,8 +1,4 @@
-"""AP_DDS telemetri abonelikleri ve son gecerli durumun tutulmasi.
-
-Abonelik geri cagrilari arac executor'unda, okuyucu ise koordinasyon
-executor'unda calistigi icin paylasilan durum kilit altinda tutulur.
-"""
+"""ap dds telemetrisini okuyup son geçerli durumu saklar"""
 from __future__ import annotations
 
 import math
@@ -18,19 +14,15 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 
 from ..estimation.geodesy import LatLon
 
-GEOPOSE_TOPIC = "/ap/geopose/filtered"
-TWIST_TOPIC = "/ap/twist/filtered"
-AIRSPEED_TOPIC = "/ap/airspeed"
-QOS_DEPTH = 10
-
-
-# EKF origin kurulmadan once geopose sifir koordinat yayinliyor. Gorev
-# alani bu noktadan binlerce kilometre uzakta oldugu icin sifira yakin
-# konumlar gecersiz sayilir.
-MIN_VALID_COORDINATE_DEG = 1e-6
+GEOPOSE_TOPIC = "/ap/geopose/filtered"  # filtrelenmiş küresel konum konusu
+TWIST_TOPIC = "/ap/twist/filtered"  # filtrelenmiş yer hızı konusu
+AIRSPEED_TOPIC = "/ap/airspeed"  # gövde eksenindeki hava hızı konusu
+QOS_DEPTH = 10  # abonelik kuyruğu derinliği
+MIN_VALID_COORDINATE_DEG = 1e-6  # ekf kurulmadan gelen sıfır koordinatı eleme sınırı
 
 
 def _is_valid_coordinate(latitude: float, longitude: float) -> bool:
+    """koordinatın ekf kurulmadan gelen sıfır değer olmadığını denetler"""
     return (
         abs(latitude) > MIN_VALID_COORDINATE_DEG
         and abs(longitude) > MIN_VALID_COORDINATE_DEG
@@ -39,33 +31,28 @@ def _is_valid_coordinate(latitude: float, longitude: float) -> bool:
 
 @dataclass(frozen=True)
 class TelemetrySnapshot:
-    """Belirli bir andaki arac durumu. position None ise henuz veri gelmedi."""
+    """tek bir andaki araç telemetrisini taşır"""
 
     position: Optional[LatLon]
     altitude_msl_m: float
-    # ENU bileseni; ETA rota dogrultusundaki izdusumu icin vektore ihtiyac duyar.
-    velocity_east_mps: float
-    velocity_north_mps: float
-    # Govde cercevesinde (FLU) gercek hava hizi vektoru ve aracin tam
-    # yonelimi; ruzgar kestirimi vektoru yonelimle ENU'ya cevirip yer
-    # hizindan cikarir. Yalnizca yaw yetmez: EKF vektoru tam yonelimle
-    # govdeye dondurdugu icin tirmanista pitch, donuslerde roll hata birakir.
-    airspeed_forward_mps: float
-    airspeed_left_mps: float
-    airspeed_up_mps: float
-    orientation_xyzw: Tuple[float, float, float, float]
-    updated_monotonic_ns: int
-    # Yer hizi ve hava hizi ayri konularda yayinlandigi icin kendi
-    # damgalarini tasirlar; ruzgar kestirimi ucunun es zamanli olmasini ister.
-    twist_monotonic_ns: int
-    airspeed_monotonic_ns: int
+    velocity_east_mps: float  # doğu yönündeki yer hızı
+    velocity_north_mps: float  # kuzey yönündeki yer hızı
+    airspeed_forward_mps: float  # gövde ileri eksenindeki hava hızı
+    airspeed_left_mps: float  # gövde sol eksenindeki hava hızı
+    airspeed_up_mps: float  # gövde yukarı eksenindeki hava hızı
+    orientation_xyzw: Tuple[float, float, float, float]  # tam araç yönelimi
+    updated_monotonic_ns: int  # son konum örneğinin zamanı
+    twist_monotonic_ns: int  # son yer hızı örneğinin zamanı
+    airspeed_monotonic_ns: int  # son hava hızı örneğinin zamanı
 
     @property
     def groundspeed_mps(self) -> float:
+        """yatay yer hızının büyüklüğünü döner"""
         return math.hypot(self.velocity_east_mps, self.velocity_north_mps)
 
     @property
     def airspeed_mps(self) -> float:
+        """üç eksendeki hava hızının büyüklüğünü döner"""
         return math.sqrt(
             self.airspeed_forward_mps ** 2
             + self.airspeed_left_mps ** 2
@@ -74,22 +61,18 @@ class TelemetrySnapshot:
 
     @property
     def valid(self) -> bool:
+        """geçerli bir konum örneği bulunup bulunmadığını döner"""
         return self.position is not None
 
     def age_s(self, now_monotonic_ns: int) -> float:
+        """son konum örneğinin yaşını saniye olarak döner"""
         if not self.valid:
             return math.inf
         return (now_monotonic_ns - self.updated_monotonic_ns) / 1e9
 
     @property
     def wind_sample_spread_s(self) -> float:
-        """Ruzgar kestiriminde kullanilan uc ornegin zaman yayilimi.
-
-        snapshot() her konunun son degerini birlestirir; ornekler farkli
-        anlara aitse yer hizi ile hava hizi vektorlerinin farki gercek
-        ruzgari vermez. Ucu de 33 ms'de bir yayinlandigi icin normalde
-        yayilim bir periyodu asmaz.
-        """
+        """rüzgâr hesabındaki örneklerin zaman farkını döner"""
         stamps = (
             self.updated_monotonic_ns,
             self.twist_monotonic_ns,
@@ -101,9 +84,10 @@ class TelemetrySnapshot:
 
 
 class DdsTelemetry:
-    """AP_DDS konularina abone olur ve son durumu saklar."""
+    """ap dds konularına abone olup son durumu saklar"""
 
     def __init__(self, node: Node) -> None:
+        """telemetri aboneliklerini ve başlangıç değerlerini hazırlar"""
         self._lock = threading.Lock()
         self._position: Optional[LatLon] = None
         self._altitude_msl_m = 0.0
@@ -118,14 +102,13 @@ class DdsTelemetry:
         self._airspeed_monotonic_ns = 0
         self.invalid_position_count = 0
 
-        # AP_DDS yayinci QoS'u garanti edilmedigi icin abone tarafi
-        # her iki durumla da uyumlu olan BEST_EFFORT secilir.
         qos = QoSProfile(depth=QOS_DEPTH, reliability=ReliabilityPolicy.BEST_EFFORT)
         node.create_subscription(GeoPoseStamped, GEOPOSE_TOPIC, self._on_geopose, qos)
         node.create_subscription(TwistStamped, TWIST_TOPIC, self._on_twist, qos)
         node.create_subscription(Vector3Stamped, AIRSPEED_TOPIC, self._on_airspeed, qos)
 
     def _on_geopose(self, msg: GeoPoseStamped) -> None:
+        """geçerli konum ve yönelim bilgisini kaydeder"""
         position = msg.pose.position
         if not _is_valid_coordinate(position.latitude, position.longitude):
             self.invalid_position_count += 1
@@ -140,6 +123,7 @@ class DdsTelemetry:
             self._updated_monotonic_ns = time.monotonic_ns()
 
     def _on_twist(self, msg: TwistStamped) -> None:
+        """doğu ve kuzey yönündeki yer hızını kaydeder"""
         linear = msg.twist.linear
         with self._lock:
             self._velocity_east_mps = linear.x
@@ -147,6 +131,7 @@ class DdsTelemetry:
             self._twist_monotonic_ns = time.monotonic_ns()
 
     def _on_airspeed(self, msg: Vector3Stamped) -> None:
+        """gövde eksenlerindeki hava hızını kaydeder"""
         with self._lock:
             self._airspeed_forward_mps = msg.vector.x
             self._airspeed_left_mps = msg.vector.y
@@ -154,6 +139,7 @@ class DdsTelemetry:
             self._airspeed_monotonic_ns = time.monotonic_ns()
 
     def snapshot(self) -> TelemetrySnapshot:
+        """kilit altında güncel telemetri kopyasını döner"""
         with self._lock:
             return TelemetrySnapshot(
                 position=self._position,

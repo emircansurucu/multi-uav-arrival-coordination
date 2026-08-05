@@ -1,4 +1,4 @@
-"""Arac konfigurasyonunun YAML'dan okunmasi ve dogrulanmasi."""
+"""araç ayarlarını yaml dosyasından okur ve doğrular"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,14 +9,12 @@ import yaml
 
 from .estimation.geodesy import LatLon
 
-# Vaka dokumani rota noktalarinin kabul yaricapini en fazla 400 m ile
-# sinirliyor; konfigurasyon bu siniri asamaz.
-MAX_WP_ACCEPT_RADIUS_M = 400.0
+MAX_WP_ACCEPT_RADIUS_M = 400.0  # izin verilen en büyük rota noktası yarıçapı
 
 
 @dataclass(frozen=True)
 class VehicleConfig:
-    """Tek bir hava aracinin calisma parametreleri."""
+    """tek bir hava aracının çalışma ayarlarını tutar"""
 
     vehicle_id: int
     vehicle_domain_id: int
@@ -39,12 +37,12 @@ class VehicleConfig:
 
     @property
     def target(self) -> LatLon:
-        """Ortak hedef, rotanin son noktasidir."""
+        """rotanın son noktasını ortak hedef olarak döndürür"""
         return self.route[-1]
 
 
 def load_vehicle_config(path: Path) -> VehicleConfig:
-    """YAML dosyasini okur ve zorunlu alanlari dogrular."""
+    """yaml dosyasını okur ve zorunlu alanları doğrular"""
     with open(path, "r", encoding="utf-8") as handle:
         raw: Dict[str, Any] = yaml.safe_load(handle)
 
@@ -96,4 +94,5 @@ def load_vehicle_config(path: Path) -> VehicleConfig:
 
 
 def _to_latlon(raw: Dict[str, Any]) -> LatLon:
+    """ayar sözlüğünü enlem ve boylam değerine çevirir"""
     return LatLon(float(raw["lat"]), float(raw["lon"]))

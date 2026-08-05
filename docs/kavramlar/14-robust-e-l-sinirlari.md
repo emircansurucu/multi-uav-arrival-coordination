@@ -4,7 +4,7 @@
 
 "Hedefe en erken ne zaman, en geç ne zaman varabilirim?"
 
-Bu iki sayı — **E** (earliest) ve **L** (latest) — aracın zaman ekseni üzerindeki
+Bu iki sayı, **E** (earliest) ve **L** (latest), aracın zaman ekseni üzerindeki
 hareket alanıdır. Plan bu aralığın içinde olmalıdır; dışındaysa ulaşılamaz.
 
 Ama "en erken" ne demek? Rüzgâr bilinmiyorsa cevap belirsizdir. İki seçenek var:
@@ -36,7 +36,7 @@ varacağım" diyorsa, o anın gerçekten ulaşılabilir olduğunu bilmeli.
 
 ## 3. Nasıl Çalışır? (Adım Adım)
 
-### Adım 1 — Rotayı zaman bloklarına ayır
+### Adım 1 Rotayı zaman bloklarına ayır
 
 ```python
 def _wind_blocks(self, position, remaining):
@@ -49,56 +49,59 @@ gerçekçi değildir.
 Rota, **rüzgâr tutarlılık süresine** (`DISTURBANCE_COHERENCE_S = 180 s`) göre
 bloklara ayrılır. Her blok kendi en kötü rüzgârını alabilir.
 
-### Adım 2 — Her blok için rüzgâr adaylarını tara
+### Adım 2 Her blok için rüzgâr adaylarını tara
 
 ```python
-ruzgar_hizi = 0.0
-while ruzgar_hizi <= DISTURBANCE_WIND_MAX_MPS + 1e-9:      # 0 -> 10 m/s
-    yonler = (0.0,) if ruzgar_hizi == 0.0 else tuple(
-        float(d) for d in range(0, 360, int(DISTURBANCE_DIRECTION_STEP_DEG))
-    )                                                       # 12 yon
-    for derece in yonler:
-        ...
-    ruzgar_hizi += DISTURBANCE_WIND_SPEED_STEP_MPS          # 2 m/s adim
+wind_speed = 0.0
+while wind_speed <= DISTURBANCE_WIND_MAX_MPS + 1e-9:        # 0 -> 10 m/s
+    # sıfır rüzgârı tek yönle hesaplar
+    directions = (0.0,) if wind_speed == 0.0 else tuple(
+        float(degree)
+        for degree in range(0, 360, int(DISTURBANCE_DIRECTION_STEP_DEG))
+    )                                                       # 12 yön
+    candidates.extend(
+        wind_from_speed_direction(wind_speed, degree) for degree in directions
+    )
+    wind_speed += DISTURBANCE_WIND_SPEED_STEP_MPS           # 2 m/s adım
 ```
 
 $6 \times 12 = 61$ aday (sıfır rüzgârda yönler özdeş).
 
-### Adım 3 — Her aday için iki uç süre
+### Adım 3 Her aday için iki uç süre
 
 ```python
-en_yavas_s = max(en_yavas_s, route_duration_with_airspeed_ramp_s(
-    position, remaining, slow_initial, self._config.max_airspeed_mps, ...))
-en_hizli_s = min(en_hizli_s, route_duration_with_airspeed_ramp_s(
-    position, remaining, fast_initial, self._config.min_airspeed_mps, ...))
+slowest_s = max(slowest_s, route_duration_with_airspeed_ramp_s(
+    position, remaining, slow_initial_airspeed_mps, self._config.max_airspeed_mps, ...))
+fastest_s = min(fastest_s, route_duration_with_airspeed_ramp_s(
+    position, remaining, fast_initial_airspeed_mps, self._config.min_airspeed_mps, ...))
 ```
 
-Dikkat: **iki ayrı uçuş** modellenir.
+Burada **iki ayrı uçuş** modellenir.
 
 | Sınır | Hız hedefi | Rüzgâr seçimi | Anlamı |
 |---|---|---|---|
 | **E** | azami | en kötü (en uzun süre) | Tam gaz gitsem bile bundan erken varamam |
 | **L** | asgari | en iyi (en kısa süre) | Gaz kesik gitsem bile bundan geç kalamam |
 
-### Adım 4 — Blokları topla, hız zincirlerini ayrı taşı
+### Adım 4 Blokları topla, hız zincirlerini ayrı taşı
 
 ```python
-yavas_hiz = initial_airspeed_mps
-hizli_hiz = initial_airspeed_mps
-for blok_index, (blok_baslangic, blok_noktalar) in enumerate(bloklar):
-    yavas_s, hizli_s = self._block_bounds_s(...)
-    toplam_yavas_s += yavas_s
-    toplam_hizli_s += hizli_s
-    # Ilk bloktan sonra her zincir kendi hedef hizina ulasmistir
-    yavas_hiz = self._config.max_airspeed_mps
-    hizli_hiz = self._config.min_airspeed_mps
+slow_airspeed = initial_airspeed_mps
+fast_airspeed = initial_airspeed_mps
+for block_index, (block_start, block_points) in enumerate(blocks):
+    slow_s, fast_s = self._block_bounds_s(...)
+    total_slow_s += slow_s
+    total_fast_s += fast_s
+    # hız rampasını yalnızca ilk blokta uygular
+    slow_airspeed = self._config.max_airspeed_mps
+    fast_airspeed = self._config.min_airspeed_mps
 ```
 
 **İki zincir ayrı hız durumu taşır.** E zinciri azami hıza koşar, L zinciri
 asgariye. İkisine aynı hızı devretmek, L zincirine her blokta yavaşlama
 rampasını yeniden ödetirdi.
 
-### Adım 5 — Mutlak anlara çevir
+### Adım 5 Mutlak anlara çevir
 
 ```python
 self._robust_earliest_ns = start_ns + int(earliest_s * NANOSECONDS_PER_SECOND)
@@ -118,8 +121,8 @@ $\mathcal{T}$ rampalı rota süresi ([07](07-ruzgar-duzeltmeli-rota-suresi.md)).
 
 **Neden E'de `max`, L'de `min`?** Garantili sınırlar istiyoruz:
 
-- E: "bundan erken varamam" — en kötü durumda azami hızla ne kadar sürer
-- L: "bundan geç kalamam" — en iyi durumda asgari hızla ne kadar sürer
+- E: "bundan erken varamam" en kötü durumda azami hızla ne kadar sürer
+- L: "bundan geç kalamam" en iyi durumda asgari hızla ne kadar sürer
 
 ### Blok modeli
 
@@ -132,7 +135,7 @@ daha kötümserdir ama daha gerçekçidir: rüzgâr 180 saniyede bir değişir, 
 bacaklarda karşıdan, son bacakta arkadan" bileşimi mümkündür.
 
 **Ölçülmüş gerekçe:** tek sabit rüzgâr varsayımıyla HA-3, hedefe 4532 m kala
-plan $T+253$ s iken $L = 436$ s görüyordu — yani "çok bol yetkim var" diyordu.
+plan $T+253$ s iken $L = 436$ s görüyordu, yani "çok bol yetkim var" diyordu.
 Gerçekte yoktu.
 
 ### Zarf ile yetki arasındaki gerilim
@@ -150,7 +153,7 @@ açıktı; $\pm 13$ m/s'ye çıkarınca ortalama $L-E$ 32.4 s'den 5.6 s'ye düş
 
 Yani zarfı büyütmek "daha güvenli" değil, **daha felçli** yapar.
 
-### Ölçülen zarf–yetki uyumsuzluğu
+### Ölçülen zarfyetki uyumsuzluğu
 
 Hız yetkisinin zaman kazanma kapasitesi:
 
@@ -230,7 +233,7 @@ KAPI LOITER BASLADI | hedefe 2500 m | planlanan cikisa 35.3 s |
                       terminal E 252.9 L 381.4 s
 ```
 
-**Doğrulama — E neyi temsil ediyor?** Azami hız 28 m/s, en kötü karşı rüzgâr
+**Doğrulama, E neyi temsil ediyor?** Azami hız 28 m/s, en kötü karşı rüzgâr
 10 m/s:
 
 $$v^{\text{yer}} = 28 - 10 = 18\ \text{m/s} \;\Rightarrow\; t = \frac{5338}{18} = 297\ \text{s}$$
@@ -243,7 +246,7 @@ tam kötümser değil.
 
 $$v^{\text{yer}} = 13 + 10 = 23\ \text{m/s} \;\Rightarrow\; t = \frac{5338}{23} = 232\ \text{s}$$
 
-Ölçülen L = 381.4 s — hesabımızdan **uzun**. Aynı sebep: rüzgâr tüm bacaklarda
+Ölçülen L = 381.4 s, hesabımızdan **uzun**. Aynı sebep: rüzgâr tüm bacaklarda
 kuyruk olamaz.
 
 **Yetki:**
@@ -252,12 +255,12 @@ $$L - E = 381.4 - 252.9 = 128.5\ \text{s}$$
 
 Kapı marjları (3 + 20 = 23 s) düşülünce pencere 105.5 s. Bol.
 
-**Karşı örnek — zarfın felç ettiği durum.** Bu projede ölçülen istatistik:
+**Karşı örnek, zarfın felç ettiği durum.** Bu projede ölçülen istatistik:
 
 | Zarf | Pencere açık oranı | Ortalama $L-E$ |
 |---|---|---|
-| Mutlak 0–10 m/s | %51 | +32.4 s |
-| Mutlak 0–13 m/s | %51 | **+5.6 s** |
+| Mutlak 0-10 m/s | %51 | +32.4 s |
+| Mutlak 0-13 m/s | %51 | **+5.6 s** |
 | Ölçülen ±2 m/s, ±30° | %92 | +111.5 s |
 
 Zarfı 13 m/s'ye çıkarmak pencere **açıklığını** değiştirmedi ama yetkiyi altıya
@@ -265,7 +268,7 @@ böldü. Ölçülen rüzgâr etrafında dar bant kurmak ise pencereyi %92'ye ç�
 
 **Ama üçüncü satır uygulanmadı ve geri alındı.** Denendi: pencere açıldı,
 zamanlama düzelmedi (−11.97 s), havada bekleme 44 s'den 115 s'ye fırladı.
-Teşhis yanlıştı — bağlayıcı kısıt pencere kullanılabilirliği değil, **son
+Teşhis yanlıştı, bağlayıcı kısıt pencere kullanılabilirliği değil, **son
 bacaktaki fiziksel yetki yokluğuydu**
 ([16 - Rüzgâr Profili](16-ruzgar-profili-ve-gercekcilik.md)).
 
@@ -285,11 +288,11 @@ plan ulaşılamaz demektir.
 
 ## 9. Sınırlamalar / Yapamayacağı
 
-- **Zarf ölçülen rüzgârı yok sayar.** Mutlak 0–10 m/s taranır; araç 4 m/s
+- **Zarf ölçülen rüzgârı yok sayar.** Mutlak 0-10 m/s taranır; araç 4 m/s
   rüzgârda uçarken bile 10 m/s karşı rüzgâr varsayılır. Bu, rüzgâr kestirimi
   için harcanan emeği burada **çöpe atar**. Ölçülen rüzgâr etrafında bant
   kurmak denendi; pencere açıldı ama zamanlama düzelmedi ve havada bekleme
-  arttı — geri alındı.
+  arttı, geri alındı.
 - **Blok sınırları konuma bağlı.** Araç ilerledikçe bloklar yeniden bölünür ve
   E/L waypoint geçişlerinde sıçrayabilir. Ölçüldü: HA-3'te uçuş başına 5 sıçrama,
   L'de 145 s'ye varan. Sabit yay uzunluğuna bağlamak bu süreksizliği giderirdi.
@@ -299,7 +302,7 @@ plan ulaşılamaz demektir.
 - **Maliyeti yüksek.** 61 aday × blok sayısı × 2 zincir × saniyede bir. Rota
   uzadıkça artar.
 - **Formal garanti değil.** Belge rüzgârın değişim hızını sınırlamıyor;
-  seçilen 0–10 m/s zarfı bir **operasyonel** sınırdır, matematiksel bir
+  seçilen 0-10 m/s zarfı bir **operasyonel** sınırdır, matematiksel bir
   adversarial garanti değil. Kod bunu açıkça belirtir.
 
 ## 10. Kodda Nerede
@@ -318,32 +321,31 @@ plan ulaşılamaz demektir.
 İki zincirin ayrı hız durumu taşıması ve gerekçesi:
 
 ```python
-# Iki sinir iki ayri ucusu temsil eder: E azami hiza, L asgari
-# hiza kosar. Ikisine de ayni hizi devretmek, L zincirine her
-# blokta yavaslama rampasini yeniden odetip L'yi kucultuyordu.
-yavas_hiz = initial_airspeed_mps
-hizli_hiz = initial_airspeed_mps
-for blok_index, (blok_baslangic, blok_noktalar) in enumerate(bloklar):
-    yavas_s, hizli_s = self._block_bounds_s(
-        blok_baslangic, blok_noktalar, yavas_hiz, hizli_hiz, blok_index
+# erken ve geç sınırları ayrı hız zincirleriyle hesaplar
+slow_airspeed = initial_airspeed_mps
+fast_airspeed = initial_airspeed_mps
+for block_index, (block_start, block_points) in enumerate(blocks):
+    slow_s, fast_s = self._block_bounds_s(
+        block_start, block_points, slow_airspeed, fast_airspeed, block_index
     )
-    toplam_yavas_s += yavas_s
-    toplam_hizli_s += hizli_s
-    yavas_hiz = self._config.max_airspeed_mps
-    hizli_hiz = self._config.min_airspeed_mps
+    total_slow_s += slow_s
+    total_fast_s += fast_s
+    # hız rampasını yalnızca ilk blokta uygular
+    slow_airspeed = self._config.max_airspeed_mps
+    fast_airspeed = self._config.min_airspeed_mps
 ```
 
 ## 12. İlgili Kavramlar
 
-- [07 - Rüzgâr Düzeltmeli Rota Süresi](07-ruzgar-duzeltmeli-rota-suresi.md) — taranan modelin kendisi.
-- [12 - Son Yasal Kapı](12-son-yasal-kapi.md) — E/L'nin bırakma penceresine çevrilmesi.
-- [13 - Terminal Rezerv](13-terminal-rezerv.md) — aynı mantığın kalan yola uygulanması.
-- [02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md) — E'nin peer'lara yayınlanması.
-- [16 - Rüzgâr Profili](16-ruzgar-profili-ve-gercekcilik.md) — zarfın karşılaştığı gerçek rüzgâr.
+- [07 - Rüzgâr Düzeltmeli Rota Süresi](07-ruzgar-duzeltmeli-rota-suresi.md) taranan modelin kendisi.
+- [12 - Son Yasal Kapı](12-son-yasal-kapi.md) E/L'nin bırakma penceresine çevrilmesi.
+- [13 - Terminal Rezerv](13-terminal-rezerv.md) aynı mantığın kalan yola uygulanması.
+- [02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md) E'nin peer'lara yayınlanması.
+- [16 - Rüzgâr Profili](16-ruzgar-profili-ve-gercekcilik.md) zarfın karşılaştığı gerçek rüzgâr.
 
 ## 13. Kaynaklar
 
-- Vaka belgesi madde 7: robustluk şartı — zarf yaklaşımının gerekçesi.
+- Vaka belgesi madde 7: robustluk şartı zarf yaklaşımının gerekçesi.
 - Ölçüm: zarf genişliği ile pencere doluluk oranı karşılaştırması (63 örnek,
   iki koşu).
-- Kod yorumu, `mission_manager.py` — geri alınan ölçülen-rüzgâr bandı denemesi.
+- Kod yorumu, `mission_manager.py` geri alınan ölçülen-rüzgâr bandı denemesi.

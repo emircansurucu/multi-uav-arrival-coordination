@@ -44,7 +44,7 @@ yapılmak zorunda.
 
 ## 3. Nasıl Çalışır? (Adım Adım)
 
-### Adım 1 — Tek süreçte iki rclpy context
+### Adım 1 Tek süreçte iki rclpy context
 
 Normal ROS 2 kullanımında bir süreç tek domaine bağlanır (`ROS_DOMAIN_ID`
 ortam değişkeni). İki domaine bağlanmak için **iki ayrı context** gerekir:
@@ -68,7 +68,7 @@ class CoordinationSide:
 
 Her context kendi `SingleThreadedExecutor`'ında çalışır.
 
-### Adım 2 — Yanlış domain tespiti
+### Adım 2 Yanlış domain tespiti
 
 Domain karışması sessiz bir arızadır. Bu yüzden ilk telemetri örneği
 **doğrulanır**:
@@ -90,7 +90,7 @@ def check_home_sanity(logger, position, config) -> bool:
 Üç kalkış noktası birbirinden kilometrelerce uzak olduğu için bu test kesin
 sonuç verir.
 
-### Adım 3 — Durum yayını
+### Adım 3 Durum yayını
 
 ```python
 STATUS_TOPIC = "/oasy/vehicle_status"
@@ -104,7 +104,7 @@ RELIABLE seçilseydi kayıp bir mesaj yeniden gönderilir, ama o mesaj çoktan
 bayatlamış olurdu. Tazelik mekanizması ([03](03-peer-yonetimi-ve-tazelik.md))
 zaten kayıp toleranslıdır.
 
-### Adım 4 — Komut yolu ayrı
+### Adım 4 Komut yolu ayrı
 
 Telemetri DDS'ten okunur ama komutlar **MAVLink**'ten gider:
 
@@ -226,7 +226,7 @@ flowchart TD
 telemetri dogrulandi: kalkis noktasina 3 m
 ```
 
-Okunan ilk konum kendi home'una 3 metre uzaklıkta — doğru araca bağlanılmış.
+Okunan ilk konum kendi home'una 3 metre uzaklıkta, doğru araca bağlanılmış.
 
 **Yanlış bağlanma senaryosu.** Eğer HA-1'in agent'ı yanlışlıkla domain 3'e
 bağlansaydı, HA-3'ün telemetrisini okurdu:
@@ -238,7 +238,7 @@ TELEMETRI UYUSMUYOR: okunan konum kendi kalkis noktasindan 7000 m uzakta.
 Arac domain 1 baska bir araca baglanmis olabilir.
 ```
 
-(Mesaj 7754 m yazardı.) Bu kontrol olmasaydı sistem **çalışıyor görünürdü** — telemetri akar, ETA
+(Mesaj 7754 m yazardı.) Bu kontrol olmasaydı sistem **çalışıyor görünürdü**, telemetri akar, ETA
 hesaplanır, komutlar gider. Ama araç başka birinin konumuna göre uçardı.
 
 **Peer görünürlüğü.** Normal işleyişte her durum satırı peer yaşlarını
@@ -250,7 +250,7 @@ peer: HA-1: 0.2 s, HA-3: 0.2 s
 
 İki peer da taze. Üç agent aynı domain 10'da birbirini görüyor.
 
-**Kayıp mesaj sayacı.** Doğrulama koşularında `kayip mesaj 0` — sırasız teslim
+**Kayıp mesaj sayacı.** Doğrulama koşularında `kayip mesaj 0`, sırasız teslim
 ya da reddedilen mesaj yaşanmadı. BEST_EFFORT QoS'in bu ölçekte yeterli olduğunu
 gösteriyor.
 
@@ -264,7 +264,7 @@ Her agent süreci iki executor thread'i çalıştırır:
 | Koordinasyon context executor'ı | Durum yayını, peer callback'leri |
 | Görev yöneticisi thread'i | 20 Hz kontrol döngüsü |
 
-Görev yöneticisi ROS callback'lerinden **bağımsız** bir thread'de çalışır —
+Görev yöneticisi ROS callback'lerinden **bağımsız** bir thread'de çalışır
 MAVLink çağrıları bloklayıcı olduğu için rclpy executor'larını tıkamamalıdır.
 
 ## 9. Sınırlamalar / Yapamayacağı
@@ -286,7 +286,7 @@ MAVLink çağrıları bloklayıcı olduğu için rclpy executor'larını tıkama
 
 | Bileşen | Yer |
 |---|---|
-| İki context kurulumu | [`agent_node.py`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/agent_node.py) — `VehicleSide`, `CoordinationSide` |
+| İki context kurulumu | [`agent_node.py`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/agent_node.py) `VehicleSide`, `CoordinationSide` |
 | Domain doğrulama | [`agent_node.py` `check_home_sanity`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/agent_node.py) |
 | Telemetri abonelikleri | [`dds_telemetry.py`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/autopilot_adapter/dds_telemetry.py) |
 | GUIDED komutu | [`dds_commands.py`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/autopilot_adapter/dds_commands.py) |
@@ -317,22 +317,22 @@ def check_home_sanity(logger, position, config: VehicleConfig) -> bool:
 QoS seçiminin gerekçesi:
 
 ```python
-# Durum yayini yuksek frekansli ve eskiyen veri oldugu icin
-# kaybolan bir ornegin yeniden gonderilmesinin degeri yok.
+# veri yüksek frekanslı ve hızla eskiyor; kaybolan örneği yeniden
+# göndermek değer taşımaz
 qos = QoSProfile(depth=QOS_DEPTH, reliability=ReliabilityPolicy.BEST_EFFORT)
 ```
 
 ## 12. İlgili Kavramlar
 
-- [03 - Peer Yönetimi ve Tazelik](03-peer-yonetimi-ve-tazelik.md) — koordinasyon domaininden gelen verinin işlenmesi.
-- [02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md) — yayınlanan verinin amacı.
-- [06 - Rüzgâr Kestirimi](06-ruzgar-kestirimi.md) — araç domaininden okunan telemetri.
-- [01 - Görev Durum Makinesi](01-gorev-durum-makinesi.md) — iki kanalı birleştiren döngü.
+- [03 - Peer Yönetimi ve Tazelik](03-peer-yonetimi-ve-tazelik.md) koordinasyon domaininden gelen verinin işlenmesi.
+- [02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md) yayınlanan verinin amacı.
+- [06 - Rüzgâr Kestirimi](06-ruzgar-kestirimi.md) araç domaininden okunan telemetri.
+- [01 - Görev Durum Makinesi](01-gorev-durum-makinesi.md) iki kanalı birleştiren döngü.
 
 ## 13. Kaynaklar
 
 - Vaka belgesi: *"ArduPilot'un yerleşik DDS (XRCE-DDS) kütüphanesini kullanarak
   doğrudan ROS 2 ortamına aktarınız (MAVROS kullanımı zorunlu değildir,
   doğrudan DDS köprüsü tercih edilmelidir)."*
-- Vaka belgesi madde 1: merkeziyetsizlik — koordinasyon domaininin tasarımı.
-- ArduPilot AP_DDS 4.6.3 — konu adlarının araç bazında ön ek almaması.
+- Vaka belgesi madde 1: merkeziyetsizlik koordinasyon domaininin tasarımı.
+- ArduPilot AP_DDS 4.6.3 konu adlarının araç bazında ön ek almaması.

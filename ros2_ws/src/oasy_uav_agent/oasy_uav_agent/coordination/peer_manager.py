@@ -1,4 +1,4 @@
-"""Diger araclarin durum yayinlarinin tutulmasi ve tazeliginin izlenmesi."""
+"""diğer araçların durumunu ve mesaj tazeliğini izler"""
 from __future__ import annotations
 
 import math
@@ -23,9 +23,10 @@ class PeerRecord:
 
 
 class PeerManager:
-    """Peer durumlarini saklar; kendi yayinini ve geriye giden mesajlari eler."""
+    """diğer araçların geçerli durum mesajlarını saklar"""
 
     def __init__(self, own_vehicle_id: int, stale_after_s: float, lost_after_s: float) -> None:
+        """araç kimliğini ve mesaj zaman aşımı sınırlarını hazırlar"""
         self._own_vehicle_id = own_vehicle_id
         self._stale_after_s = stale_after_s
         self._lost_after_s = lost_after_s
@@ -34,13 +35,13 @@ class PeerManager:
         self.rejected_count = 0
 
     def update(self, status: VehicleStatus, received_monotonic_ns: int) -> bool:
-        """Yeni peer mesajini kaydeder. Kabul edilmediyse False doner."""
+        """yeni araç mesajını kaydeder kabul edilmediyse false döndürür"""
         if status.vehicle_id == self._own_vehicle_id:
             return False
 
         with self._lock:
             existing = self._peers.get(status.vehicle_id)
-            # Sirasiz teslimde eski bir mesaj yeniyi ezmemeli.
+            # eski mesajın yeni durumu ezmesini önler
             if existing is not None and status.monotonic_ns < existing.status.monotonic_ns:
                 self.rejected_count += 1
                 return False
@@ -48,10 +49,12 @@ class PeerManager:
         return True
 
     def snapshot(self) -> Dict[int, PeerRecord]:
+        """kayıtlı araç durumlarının güvenli bir kopyasını döner"""
         with self._lock:
             return dict(self._peers)
 
     def age_s(self, vehicle_id: int, now_monotonic_ns: int) -> float:
+        """seçilen aracın son mesaj yaşını saniye olarak döner"""
         with self._lock:
             record = self._peers.get(vehicle_id)
         if record is None:
@@ -59,11 +62,7 @@ class PeerManager:
         return (now_monotonic_ns - record.received_monotonic_ns) / 1e9
 
     def committed_arrivals(self, now_monotonic_ns: int) -> Dict[int, int]:
-        """Kaybolmamis peer'larin taahhut ettigi varis anlari.
-
-        Taahhut edilmemis ya da kayip sayilan peer'lar disarida birakilir;
-        boylece referans hesabi yalnizca guvenilir bilgiye dayanir.
-        """
+        """ulaşılabilen araçların taahhüt ettiği varış anlarını döndürür"""
         result: Dict[int, int] = {}
         for vehicle_id, record in self.snapshot().items():
             if not record.status.arrival_committed:
@@ -74,7 +73,7 @@ class PeerManager:
         return result
 
     def feasible_arrivals(self, now_monotonic_ns: int) -> Dict[int, int]:
-        """Kaybolmamis peer'larin en erken ulasabilecegi varis anlari."""
+        """ulaşılabilen araçların en erken varış anlarını döndürür"""
         result: Dict[int, int] = {}
         for vehicle_id, record in self.snapshot().items():
             if record.status.earliest_feasible_arrival_monotonic_ns <= 0:
@@ -85,14 +84,7 @@ class PeerManager:
         return result
 
     def settled_wind(self, now_monotonic_ns: int) -> Optional[Tuple[float, float]]:
-        """Ruzgari oturmus peer'lar icinde en kucuk id'ninki (hiz, yon).
-
-        En taze mesaji secmek cazip gorunuyor ama iki arac ayni anda
-        havadayken agent saniyede birkac kez ikisinin tahmini arasinda
-        ziplar; nominal ucus suresi her siçramada yeniden hesaplanir ve
-        araclar birbirinin gurultusunu besler. Sabit bir sira, uc agentin
-        de ayni kaynagi secmesini garanti eder.
-        """
+        """geçerli rüzgârı olan en küçük kimlikli aracın ölçümünü döndürür"""
         peers = self.snapshot()
         for vehicle_id in sorted(peers):
             record = peers[vehicle_id]
@@ -104,6 +96,7 @@ class PeerManager:
         return None
 
     def freshness(self, vehicle_id: int, now_monotonic_ns: int) -> PeerFreshness:
+        """araç mesajını yaşına göre taze eski veya kayıp olarak sınıflandırır"""
         age = self.age_s(vehicle_id, now_monotonic_ns)
         if age >= self._lost_after_s:
             return PeerFreshness.LOST

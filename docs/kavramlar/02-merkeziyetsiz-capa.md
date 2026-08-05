@@ -6,7 +6,7 @@
 Peki **kim ne zaman varacağına** nasıl karar verilir?
 
 Merkezi bir yer kontrol istasyonu olsaydı basit olurdu: "HA-1 sen 12:00:00'da,
-HA-2 sen 12:00:20'de var." Ama belge bunu yasaklıyor — merkez yok, master node
+HA-2 sen 12:00:20'de var." Ama belge bunu yasaklıyor, merkez yok, master node
 yok.
 
 Çözüm bir **çıpa** (anchor) fikrine dayanır: ortak bir zaman referansı. Her araç
@@ -52,7 +52,7 @@ Kod iki fonksiyon sunar ve **farklı sorulara** cevap verirler:
 
 Birincisi kalkış slotu için, ikincisi uçuş boyunca plan düzeltmesi için.
 
-### Adım 1 — Referans varış (kalkış öncesi)
+### Adım 1 Referans varış (kalkış öncesi)
 
 ```python
 for peer_id, arrival_ns in sorted(committed_arrivals.items()):
@@ -64,11 +64,11 @@ for peer_id, arrival_ns in sorted(committed_arrivals.items()):
 ```
 
 HA-3 için: HA-1 varışına +40 s, HA-2 varışına +20 s. İkisinden **geç olanı**
-alınır — her iki kısıt da sağlanmalı.
+alınır, her iki kısıt da sağlanmalı.
 
 Öncü araç (en küçük numara) için referans yoktur; kendi nominal planını kullanır.
 
-### Adım 2 — Ulaşılabilir çıpa (uçuş boyunca)
+### Adım 2 Ulaşılabilir çıpa (uçuş boyunca)
 
 ```python
 for vehicle_id, arrival_ns in feasible_arrivals.items():
@@ -79,10 +79,10 @@ for vehicle_id, arrival_ns in feasible_arrivals.items():
 ```
 
 Her araç "ben en erken ne zaman varabilirim" değerini yayınlar. Çıpa adayı, o
-değerden **kendi sıra gecikmesi çıkarılarak** bulunur — böylece hepsi ortak bir
+değerden **kendi sıra gecikmesi çıkarılarak** bulunur, böylece hepsi ortak bir
 zaman eksenine indirgenir. Bağlayıcı olan en geç adaydır.
 
-### Adım 3 — Kendi hedefini türet
+### Adım 3 Kendi hedefini türet
 
 ```python
 def target_arrival(anchor_ns, vehicle_id, separation_s=20.0):
@@ -120,7 +120,7 @@ minimize edilir. Daha küçük seçilse takvim ulaşılamaz olur.
 
 ### Determinizm
 
-Aynı $\{E_i\}$ kümesini gören her araç aynı $A$'yı hesaplar — `max` sırasız bir
+Aynı $\{E_i\}$ kümesini gören her araç aynı $A$'yı hesaplar, `max` sırasız bir
 işlemdir, girdi sırası sonucu değiştirmez. Merkezî karar noktası oluşmaz.
 
 Determinizmi bozan tek şey **farklı girdi kümesi** görmektir: bir araç peer'ı
@@ -129,7 +129,7 @@ kritiktir ([03 - Peer Yönetimi](03-peer-yonetimi-ve-tazelik.md)).
 
 ### Mutlak zaman sözleşmesi
 
-Tüm anlar `monotonic_ns` olarak taşınır — göreli süre değil. Nedeni:
+Tüm anlar `monotonic_ns` olarak taşınır, göreli süre değil. Nedeni:
 
 $$T_{\text{alınan}} = T_{\text{gönderilen}} \quad \text{(mutlak, gecikmeye bağışık)}$$
 
@@ -156,7 +156,7 @@ $$\Delta t_{\text{alınan}} = \Delta t_{\text{gönderilen}} - \tau_{\text{gecikm
   Hedefler:
     T_1 = 105 + 0  = 105  (E_1=100 iken 5 s bekler)
     T_2 = 105 + 20 = 125  (E_2=115 iken 10 s bekler)
-    T_3 = 105 + 40 = 145  (E_3=145, tam sinirda — capayi O belirledi)
+    T_3 = 105 + 40 = 145  (E_3=145, tam sinirda, capayi O belirledi)
 
   HA-3 en kisitli araç: capa onun tarafindan belirlendi,
   bu yuzden hic beklemiyor. Digerleri ona uyum sagliyor.
@@ -195,9 +195,9 @@ Konfigürasyondan hesaplanan gerçek rota uzunlukları ve nominal süreler
 | HA-2 | 12329 m | **538 s** |
 | HA-3 | 9269 m | **405 s** |
 
-Dikkat: HA-2'nin rotası HA-1'inkinden **daha uzun** olduğu halde HA-2 ikinci
+HA-2'nin rotası HA-1'inkinden **daha uzun** olduğu halde HA-2 ikinci
 varmalı. HA-3 ise en kısa rotaya sahip ama en son varmalı. Sıra belgeyle sabit,
-geometriyle değil — koordinasyonun asıl zorluğu burada.
+geometriyle değil, koordinasyonun asıl zorluğu burada.
 
 **Kalkış slotu hesabı.** HA-1 öncüdür, $t=0$'da kalkar:
 
@@ -209,12 +209,12 @@ $$T_2^{\text{ref}} = T_1 + 20 \times (2-1) = 533 + 20 = 553\ \text{s}$$
 
 $$t_{\text{kalkış},2} = 553 - 538 = \mathbf{15\ s}$$
 
-HA-3 için iki kısıt — ikisi de sağlanmalı:
+HA-3 için iki kısıt, ikisi de sağlanmalı:
 
 $$\text{HA-1'den: } 533 + 20 \times 2 = 573\ \text{s}$$
 $$\text{HA-2'den: } 553 + 20 \times 1 = 573\ \text{s}$$
 
-İkisi de 573 — zincir tutarlı. Kalkış anı:
+İkisi de 573, zincir tutarlı. Kalkış anı:
 
 $$t_{\text{kalkış},3} = 573 - 405 = \mathbf{168\ s}$$
 
@@ -222,7 +222,7 @@ $$t_{\text{kalkış},3} = 573 - 405 = \mathbf{168\ s}$$
 
 | Araç | Hesaplanan | Ölçülen | Fark |
 |---|---|---|---|
-| HA-1 | 0 s | 0.0 s | — |
+| HA-1 | 0 s | 0.0 s | yok |
 | HA-2 | 15 s | **14.5 s** | 0.5 s |
 | HA-3 | 168 s | **168.1 s** | 0.1 s |
 
@@ -232,7 +232,7 @@ göre düzeltilmesinden ve arm süresinden geliyor.
 **Çıpanın rolü.** Bu koşuda toplam beklemenin tamamı **yerde** yapıldı (havada
 0 s). Çıpa doğru kurulduğunda araçlar havalanmadan senkronize olur; havada
 düzeltme yalnızca rüzgârın getirdiği sapma kadar kalır. Madde 8'in
-("bekleme süreleri en az") istediği tam budur — yerde beklemek bedava, havada
+("bekleme süreleri en az") istediği tam budur, yerde beklemek bedava, havada
 beklemek yakıt ve risk.
 
 **Sonuç:** HA-2 − HA-1 = 19.89 s, HA-3 − HA-2 = 20.17 s. Sapmalar −0.11 ve
@@ -285,7 +285,7 @@ gürültüsünü besler.
 
 ## 11. Kod Örneği
 
-Çıpanın tamamı — sekiz satır:
+Çıpanın tamamı, sekiz satır:
 
 ```python
 def compute_feasible_anchor(feasible_arrivals, separation_s=ARRIVAL_SEPARATION_S):
@@ -303,7 +303,7 @@ def compute_feasible_anchor(feasible_arrivals, separation_s=ARRIVAL_SEPARATION_S
     return anchor_ns
 ```
 
-Sıra garantisi — tek satırlık filtre:
+Sıra garantisi, tek satırlık filtre:
 
 ```python
 if peer_id >= vehicle_id:
@@ -312,16 +312,16 @@ if peer_id >= vehicle_id:
 
 ## 12. İlgili Kavramlar
 
-- [03 - Peer Yönetimi ve Tazelik](03-peer-yonetimi-ve-tazelik.md) — çıpa girdisinin hangi peer'lardan geleceğine karar verir.
-- [05 - Kalkış Slotu](05-kalkis-slotu-ve-yer-gecikmesi.md) — `compute_reference_arrival`'ın tüketicisi.
-- [04 - Plan Revizyonu](04-plan-revizyonu.md) — nominal planın rüzgârla düzeltilmesi.
-- [11 - Varış Zamanı Kontrolcüsü](11-varis-zamani-kontrolcusu.md) — çıpadan gelen hedefe hızla yakınsar.
-- [15 - DDS Mimarisi](15-dds-mimarisi-ve-domain-ayrimi.md) — peer yayınlarının taşındığı kanal.
+- [03 - Peer Yönetimi ve Tazelik](03-peer-yonetimi-ve-tazelik.md) çıpa girdisinin hangi peer'lardan geleceğine karar verir.
+- [05 - Kalkış Slotu](05-kalkis-slotu-ve-yer-gecikmesi.md) `compute_reference_arrival`'ın tüketicisi.
+- [04 - Plan Revizyonu](04-plan-revizyonu.md) nominal planın rüzgârla düzeltilmesi.
+- [11 - Varış Zamanı Kontrolcüsü](11-varis-zamani-kontrolcusu.md) çıpadan gelen hedefe hızla yakınsar.
+- [15 - DDS Mimarisi](15-dds-mimarisi-ve-domain-ayrimi.md) peer yayınlarının taşındığı kanal.
 
 ## 13. Kaynaklar
 
 - Vaka belgesi madde 1: merkeziyetsizlik şartı ve 20 saniye kuralı.
 - Vaka belgesi madde 2: varış sırası HA-1 / HA-2 / HA-3.
 - Vaka belgesi madde 8: *"havada kalma / bekleme süreleri en az olacak şekilde
-  optimal senaryo"* — çıpanın `max` seçiminin gerekçesi.
+  optimal senaryo"*, çıpanın `max` seçiminin gerekçesi.
 - Doğrulama koşusu `logs/run_20260804_172043`.

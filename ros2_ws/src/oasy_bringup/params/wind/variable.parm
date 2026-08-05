@@ -1,8 +1,4 @@
-# Degisken ruzgar senaryosunun baslangic degerleri (madde 7).
-# Siddet ve yon ucus sirasinda scripts/wind_profile.py tarafindan
-# degistirilir; buradaki degerler yalnizca kalkis anini tanimlar.
-# SIM_WIND_TURB, ortalamanin etrafinda salinim ekler ve profil
-# basamaklari arasinda da etkilidir.
+# değişken rüzgâr senaryosunun başlangıç değerleri
 SIM_WIND_SPD 4
 SIM_WIND_DIR 270
 SIM_WIND_TURB 1

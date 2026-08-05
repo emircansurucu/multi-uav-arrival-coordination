@@ -1,9 +1,4 @@
-"""Rota noktalarindan ArduPlane gorev listesi uretimi.
-
-Irtifalar MAV_FRAME_GLOBAL ile MSL olarak yazilir; boylece home irtifasina
-bagli relatif donusum gerekmez ve dokumandaki 400 m MSL sarti dogrudan
-gorev dosyasinda gorunur.
-"""
+"""rota noktalarından msl irtifalı ArduPlane görevi üretir"""
 from __future__ import annotations
 
 from typing import List, Sequence
@@ -13,11 +8,8 @@ from pymavlink import mavutil
 from ..estimation.geodesy import LatLon
 from .mavlink_link import MissionItem
 
-TAKEOFF_PITCH_DEG = 15.0
-# Hedef ogesinde genis kabul yaricapi kullanilirsa otopilot arac 5 m'ye
-# yaklasmadan gorevi tamamlamis sayar. Varis karari bu degere bagli degildir,
-# ama aracin hedefin uzerinden gecmesi icin dar tutulur.
-TARGET_WP_ACCEPT_RADIUS_M = 5.0
+TAKEOFF_PITCH_DEG = 15.0  # kalkışta istenen tırmanış açısı
+TARGET_WP_ACCEPT_RADIUS_M = 5.0  # hedef noktası kabul yarıçapı
 
 
 
@@ -28,7 +20,7 @@ def build_mission(
     takeoff_alt_msl_m: float,
     wp_accept_radius_m: float,
 ) -> List[MissionItem]:
-    """Home + kalkis + rota noktalarindan gorev ogelerini uretir."""
+    """ev kalkış ve rota noktalarından görev öğelerini üretir"""
     if len(route) < 1:
         raise ValueError("rota en az bir nokta icermeli")
 
@@ -52,4 +44,3 @@ def build_mission(
             )
         )
     return items
-

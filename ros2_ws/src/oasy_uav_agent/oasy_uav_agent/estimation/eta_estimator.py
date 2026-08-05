@@ -1,16 +1,4 @@
-"""Rota boyunca kalan mesafe ve varis suresi tahmini.
-
-ETA, kalan mesafenin anlik yer hizina bolunmesi degildir. Iki nokta onemli:
-
-  - Kalan mesafe rota segmentleri boyunca olculur. HA-1 icin duz cizgi
-    5598 m iken rota 12205 m; bu fark dogrudan ETA'ya yansir.
-  - Hiz olarak rota dogrultusundaki izdusum kullanilir. Donuslerde ve yan
-    ruzgarda arac hizli gorunse bile hedefe yaklasma hizi dusuktur.
-
-ETA'nin kendisi filtrelenmez; dogal olarak azalan bir buyuklugu alcak
-geciren filtreden gecirmek gecikme yaratir. Bunun yerine ilerleme hizi
-filtrelenir ve ETA filtrelenmis hizdan hesaplanir.
-"""
+"""rota boyunca kalan mesafeyi ve varış süresini hesaplar"""
 from __future__ import annotations
 
 import math
@@ -19,16 +7,13 @@ from typing import Optional, Sequence, Tuple
 
 from .geodesy import LatLon, geodesic_distance_m, to_local_xy
 
-# Gorev dosyasindaki kabul yaricapindan (120 m) biraz genis tutulur; otopilot
-# waypoint'i birakmisken tahmin edicinin geride kalmamasi icin.
-DEFAULT_ADVANCE_RADIUS_M = 150.0
-DEFAULT_SPEED_FILTER_TAU_S = 3.0
-# Donus veya yan ruzgarda izdusum sifira yaklasinca ETA sonsuza gider.
-DEFAULT_MIN_PROGRESS_SPEED_MPS = 3.0
+DEFAULT_ADVANCE_RADIUS_M = 150.0  # sonraki rota noktasına geçiş yarıçapı
+DEFAULT_SPEED_FILTER_TAU_S = 3.0  # ilerleme hızı filtre zaman sabiti
+DEFAULT_MIN_PROGRESS_SPEED_MPS = 3.0  # eta hesabındaki en düşük ilerleme hızı
 
 
 def route_length_m(home: LatLon, route: Sequence[LatLon]) -> float:
-    """Kalkis noktasindan hedefe kadar rota boyunca toplam mesafe."""
+    """kalkıştan hedefe kadar toplam rota mesafesini hesaplar"""
     points = [home, *route]
     return sum(
         geodesic_distance_m(start, end) for start, end in zip(points, points[1:])
@@ -44,7 +29,7 @@ class EtaResult:
 
 
 class EtaEstimator:
-    """Aktif waypoint'i izler, kalan rota mesafesini ve ETA'yi hesaplar."""
+    """aktif rota noktasını kalan mesafeyi ve eta değerini izler"""
 
     def __init__(
         self,
@@ -54,6 +39,7 @@ class EtaEstimator:
         speed_filter_tau_s: float = DEFAULT_SPEED_FILTER_TAU_S,
         min_progress_speed_mps: float = DEFAULT_MIN_PROGRESS_SPEED_MPS,
     ) -> None:
+        """rota bilgisini ve eta hesabının başlangıç durumunu hazırlar"""
         if len(route) < 1:
             raise ValueError("rota en az bir nokta icermeli")
         self._route = tuple(route)
@@ -69,10 +55,11 @@ class EtaEstimator:
 
     @property
     def active_index(self) -> int:
+        """aracın yöneldiği güncel rota noktası indeksini döner"""
         return self._active_index
 
     def _compute_suffix_lengths(self) -> Tuple[float, ...]:
-        """Her waypoint'ten hedefe kalan segment uzunluklari toplami."""
+        """her rota noktasından hedefe kalan mesafeyi hesaplar"""
         suffix = [0.0] * len(self._route)
         for index in range(len(self._route) - 2, -1, -1):
             leg = geodesic_distance_m(self._route[index], self._route[index + 1])
@@ -80,16 +67,16 @@ class EtaEstimator:
         return tuple(suffix)
 
     def _leg_start(self, index: int) -> LatLon:
+        """verilen rota bacağının başlangıç noktasını döner"""
         return self._home if index == 0 else self._route[index - 1]
 
     def _has_passed(self, position: LatLon, index: int) -> bool:
-        """Waypoint gecildi mi: yaricapa girildi ya da duzlemi asildi."""
+        """rota noktasının geçilip geçilmediğini belirler"""
         waypoint = self._route[index]
         if geodesic_distance_m(position, waypoint) <= self._advance_radius_m:
             return True
 
-        # Iz-boyu oran: L1 kontrolcusu koseyi kestiginde arac waypoint'e hic
-        # yaklasmadan bacagi bitirebiliyor, bu durumu yalnizca bu kontrol yakalar.
+        # köşe kesildiğinde bacak üzerindeki ilerlemeyi kullanır
         origin = self._leg_start(index)
         leg = to_local_xy(waypoint, origin)
         leg_squared = leg[0] ** 2 + leg[1] ** 2
@@ -100,18 +87,19 @@ class EtaEstimator:
         return along_track > 1.0
 
     def _advance_active_index(self, position: LatLon) -> None:
-        """Aktif indeksi ilerletir; geri gitmez, hedefte durur."""
+        """aktif rota indeksini hedefe doğru ilerletir"""
         while self._active_index < len(self._route) - 1:
             if not self._has_passed(position, self._active_index):
                 break
             self._active_index += 1
 
     def remaining_distance_m(self, position: LatLon) -> float:
+        """güncel konumdan rota sonuna kalan toplam mesafeyi hesaplar"""
         to_active = geodesic_distance_m(position, self._route[self._active_index])
         return to_active + self._suffix_lengths[self._active_index]
 
     def _progress_speed_mps(self, position: LatLon, velocity_en: Tuple[float, float]) -> float:
-        """Hiz vektorunun aktif waypoint dogrultusundaki bileseni."""
+        """hızın aktif rota noktası yönündeki bileşenini hesaplar"""
         direction = to_local_xy(self._route[self._active_index], position)
         norm = math.hypot(*direction)
         if norm == 0.0:
@@ -120,6 +108,7 @@ class EtaEstimator:
         return velocity_en[0] * unit[0] + velocity_en[1] * unit[1]
 
     def _filter_speed(self, raw_speed_mps: float, now_monotonic_ns: int) -> float:
+        """rota yönündeki hızı zamana bağlı alçak geçiren filtreyle süzer"""
         if self._filtered_speed_mps is None or self._last_update_ns is None:
             self._filtered_speed_mps = raw_speed_mps
         else:
@@ -136,6 +125,7 @@ class EtaEstimator:
         velocity_en: Tuple[float, float],
         now_monotonic_ns: int,
     ) -> EtaResult:
+        """konum ve hız örneğinden kalan mesafe ile eta değerini günceller"""
         self._advance_active_index(position)
         remaining_m = self.remaining_distance_m(position)
         filtered_speed = self._filter_speed(

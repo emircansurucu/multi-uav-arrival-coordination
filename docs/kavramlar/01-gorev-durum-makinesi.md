@@ -11,10 +11,10 @@ Durum makinesi bu adımları **açık** hale getirir: her an aracın hangi aşam
 olduğu tek bir sayıyla bilinir, ve o aşamada hangi kodun çalışacağı kesindir.
 
 Sezgi: Uçuş kontrol listesi gibi. "Motoru çalıştır" maddesine, "yakıt kontrol
-edildi" maddesi tamamlanmadan geçilmez. Liste tek yönlüdür — geri dönülmez.
+edildi" maddesi tamamlanmadan geçilmez. Liste tek yönlüdür, geri dönülmez.
 
 Bu sistemde 14 durum var ve akış **tek yönlüdür**: `INIT` → … → `DONE`. Geri
-dönüş yok. Tek istisna `FAILSAFE` — her yerden oraya düşülebilir.
+dönüş yok. Tek istisna `FAILSAFE`, her yerden oraya düşülebilir.
 
 ## 2. Neden Var? Hangi Problemi Çözüyor?
 
@@ -29,7 +29,7 @@ bu koşulları tek yerde toplar.
 mesajındaki `STATE_*` sabitleri enum ile **birebir aynı sayılardır**.
 
 **3. Geri dönüşü engellemek.** Bir araç `TERMINAL`'e girdikten sonra `CRUISE`'a
-dönerse ne olur? Kapı mandalı, varış tespiti, rezerv mantığı — hepsi tek yönlü
+dönerse ne olur? Kapı mandalı, varış tespiti, rezerv mantığı, hepsi tek yönlü
 ilerleme varsayar. Durum makinesi bu varsayımı zorlar.
 
 ## 3. Nasıl Çalışır? (Adım Adım)
@@ -50,8 +50,8 @@ ilerleme varsayar. Durum makinesi bu varsayımı zorlar.
 | 9 | `TERMINAL` | Kapı, rezerv, son yaklaşma | 5 m çemberine giriş |
 | 10 | `ARRIVED` | Varış anını mandallar | RTL komutu |
 | 11 | `RTL` | Dönüş | mod doğrulandı |
-| 12 | `DONE` | Bitti | — |
-| 13 | `FAILSAFE` | Arıza | — |
+| 12 | `DONE` | Bitti | yok |
+| 13 | `FAILSAFE` | Arıza | yok |
 
 ### Döngü
 
@@ -109,7 +109,7 @@ for state in MissionState:
     assert getattr(vehicle_status, f"STATE_{state.name}") == state.value
 ```
 
-Enum ile mesaj sabitleri ayrışırsa peer'lar durumu yanlış yorumlar — sessiz ve
+Enum ile mesaj sabitleri ayrışırsa peer'lar durumu yanlış yorumlar, sessiz ve
 tehlikeli bir hata. Test bunu derleme zamanına yakın yakalar.
 
 ## 4. Matematiksel Temel
@@ -150,7 +150,7 @@ Tick aralığı $\Delta t = 0.05$ s. Her tick'te yapılan iş:
 | Kontrol | O(1) |
 
 E/L hesabı en pahalısıdır ve bu yüzden `ROBUST_BOUNDS_INTERVAL_S = 1` s ile
-seyreltilir — her tick değil, saniyede bir.
+seyreltilir, her tick değil, saniyede bir.
 
 ## 5. Geometrik/Görsel Sezgi
 
@@ -234,7 +234,7 @@ Loglardan çıkarılan gerçek zaman çizelgesi:
 
 | Zaman | Geçiş | Aşama süresi |
 |---|---|---|
-| 17:20:50 | `INIT` → `CONNECTING` | — |
+| 17:20:50 | `INIT` → `CONNECTING` | yok |
 | 17:20:55 | `CONNECTING` → `MISSION_UPLOAD` | 5 s |
 | 17:20:55 | `MISSION_UPLOAD` → `WAIT_PEERS` | < 1 s |
 | 17:21:09 | `WAIT_PEERS` → `WAIT_TAKEOFF_SLOT` | 14 s |
@@ -258,12 +258,12 @@ Loglardan çıkarılan gerçek zaman çizelgesi:
 | Seyir | 129 s | %22 |
 | **Terminal** | **214 s** | **%36** |
 
-Görev süresinin **dörtte biri yerde bekleyerek** geçiyor — madde 8'in istediği
+Görev süresinin **dörtte biri yerde bekleyerek** geçiyor, madde 8'in istediği
 "optimal senaryo", bekleme havada değil yerde. (Analiz aracının raporladığı
 168.1 s, `MISSION_UPLOAD`'dan `ARMING`'e kadar olan toplamı ölçer; durum
 makinesindeki 151 s yalnızca `WAIT_TAKEOFF_SLOT` süresidir.)
 
-**Asıl dikkat çekici bulgu: terminal faz görevin en uzun aşaması** — 214 saniye,
+**Terminal faz görevin en uzun aşaması**, 214 saniye,
 %36. Bu beklenmedik ve mimariyi açıklıyor.
 
 Sebep [09 - Jeodezi](09-jeodezi.md)'de görülen geometri: hedefin 2 km çemberine
@@ -274,7 +274,7 @@ Bunun iki sonucu var:
 
 1. **İyi haber:** erkenliği düzeltmek için 214 saniye var, 71 değil.
 2. **Kötü haber:** bu 214 saniyenin tamamında **loiter yasak** (madde 6). Elde
-   yalnızca hız var — ve kuyruk rüzgârında hız yetkisi sıfıra inebiliyor
+   yalnızca hız var, ve kuyruk rüzgârında hız yetkisi sıfıra inebiliyor
    ([07](07-ruzgar-duzeltmeli-rota-suresi.md)).
 
 Kapı ([12](12-son-yasal-kapi.md)) ve terminal rezerv
@@ -303,7 +303,7 @@ denetler.
 ## 9. Sınırlamalar / Yapamayacağı
 
 - **Geri dönüş yok.** Araç `TERMINAL`'e girdikten sonra `CRUISE`'a dönemez.
-  Rota hedefin 2 km çemberine girip çıksa bile durum korunur — bilinçli, çünkü
+  Rota hedefin 2 km çemberine girip çıksa bile durum korunur, bilinçli, çünkü
   kapı ve varış mandalları tek yönlü ilerleme varsayar.
 - **`FAILSAFE` boş.** `safety/safety_manager.py` dosyası var ama **0 satır**.
   Durum tanımlı ama hiçbir yerde tetiklenmiyor. Bu, sistemin bilinen bir
@@ -358,16 +358,16 @@ AIRBORNE_STATES = frozenset(
 
 ## 12. İlgili Kavramlar
 
-- [05 - Kalkış Slotu](05-kalkis-slotu-ve-yer-gecikmesi.md) — `WAIT_PEERS` ve `WAIT_TAKEOFF_SLOT`.
-- [12 - Son Yasal Kapı](12-son-yasal-kapi.md) — `TERMINAL` işleyicisi.
-- [10 - Varış Tespiti](10-varis-tespiti.md) — `ARRIVED` geçişini tetikler.
-- [15 - DDS Mimarisi](15-dds-mimarisi-ve-domain-ayrimi.md) — durumun yayınlandığı kanal.
-- [03 - Peer Yönetimi](03-peer-yonetimi-ve-tazelik.md) — `mission_state` alanının tüketicisi.
+- [05 - Kalkış Slotu](05-kalkis-slotu-ve-yer-gecikmesi.md) `WAIT_PEERS` ve `WAIT_TAKEOFF_SLOT`.
+- [12 - Son Yasal Kapı](12-son-yasal-kapi.md) `TERMINAL` işleyicisi.
+- [10 - Varış Tespiti](10-varis-tespiti.md) `ARRIVED` geçişini tetikler.
+- [15 - DDS Mimarisi](15-dds-mimarisi-ve-domain-ayrimi.md) durumun yayınlandığı kanal.
+- [03 - Peer Yönetimi](03-peer-yonetimi-ve-tazelik.md) `mission_state` alanının tüketicisi.
 
 ## 13. Kaynaklar
 
 - Vaka belgesi madde 2: *"noktaya varıldıktan sonra HA'lar RTL moduna
-  alınmalıdır"* — `ARRIVED` → `RTL` geçişinin gerekçesi.
-- Vaka belgesi madde 3: 400 m MSL — `CLIMB` → `CRUISE` eşiği.
+  alınmalıdır"*, `ARRIVED` → `RTL` geçişinin gerekçesi.
+- Vaka belgesi madde 3: 400 m MSL `CLIMB` → `CRUISE` eşiği.
 - Vaka belgesi madde 1: *"Kalkış işlemini manuel olarak veya GCS üzerinden
-  tetiklemeyiniz"* — `ARMING` ve `TAKEOFF`'un otomatik olması.
+  tetiklemeyiniz"*, `ARMING` ve `TAKEOFF`'un otomatik olması.

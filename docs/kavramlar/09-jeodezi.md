@@ -6,23 +6,23 @@ Dünya küre, harita düz. Bu modül ikisi arasında gidip gelir.
 
 İki tür hesap gerekir ve **farklı araçlar** ister:
 
-- **"İki nokta arası kaç metre?"** — Kilometrelerce mesafe, yüksek doğruluk.
+- **"İki nokta arası kaç metre?"** Kilometrelerce mesafe, yüksek doğruluk.
   Dünyanın basıklığı önemli. WGS84 elipsoidi üzerinde çözülür.
-- **"Bu nokta şu çemberin içinde mi?"** — Birkaç yüz metrelik yerel iş.
+- **"Bu nokta şu çemberin içinde mi?"** Birkaç yüz metrelik yerel iş.
   Düzlem varsaymak yeterli, hatta zorunlu: çember-doğru kesişimi düzlemde
   ikinci derece denklemdir, elipsoit üzerinde çirkin bir problem.
 
 Sezgi: Şehirler arası mesafeyi hesaplarken dünyanın yuvarlaklığını hesaba
-katarsın. Odandaki masanın köşesine olan uzaklığı ölçerken katmazsın — cetvel
+katarsın. Odandaki masanın köşesine olan uzaklığı ölçerken katmazsın, cetvel
 yeterli. Bu modül hangi durumda hangisinin kullanılacağını bilir.
 
 ## 2. Neden Var? Hangi Problemi Çözüyor?
 
 Sistem üç yerde geometri sorar:
 
-1. **Rota uzunluğu ve kalan mesafe** — kilometrelerce, jeodezik doğruluk gerekir.
-2. **Kabul çemberine giriş** — 5 m yarıçap, düzlemsel kesişim gerekir.
-3. **Rota sapması** — belge madde 4'ün 500 m sınırı, noktanın doğru parçasına
+1. **Rota uzunluğu ve kalan mesafe**, kilometrelerce, jeodezik doğruluk gerekir.
+2. **Kabul çemberine giriş**, 5 m yarıçap, düzlemsel kesişim gerekir.
+3. **Rota sapması**, belge madde 4'ün 500 m sınırı, noktanın doğru parçasına
    dik uzaklığı.
 
 Karıştırmak pahalıdır. Elipsoit üzerinde çember kesişimi çözmeye çalışmak
@@ -38,7 +38,7 @@ edip jeodezik mesafeye göre ikili aramayla düzeltmek
 
 ## 3. Nasıl Çalışır? (Adım Adım)
 
-### Jeodezik mesafe — `geodesic_distance_m`
+### Jeodezik mesafe `geodesic_distance_m`
 
 ```python
 _GEOD = Geodesic.WGS84
@@ -49,7 +49,7 @@ return _GEOD.Inverse(a.lat, a.lon, b.lat, b.lon)["s12"]
 **ters jeodezik problemi** çözer: iki nokta verildiğinde aralarındaki en kısa
 yüzey mesafesi ve kerteriz. Doğruluk nanometre mertebesindedir.
 
-### Yerel düzlem — `to_local_xy` / `from_local_xy`
+### Yerel düzlem `to_local_xy` / `from_local_xy`
 
 Eşdikdörtgen (equirectangular) izdüşüm:
 
@@ -59,21 +59,21 @@ east  = math.radians(point.lon - origin.lon) * _EARTH_RADIUS_M * math.cos(lat_ra
 north = math.radians(point.lat - origin.lat) * _EARTH_RADIUS_M
 ```
 
-Boylam farkı enlemin kosinüsüyle ölçeklenir — kutuplara yaklaştıkça meridyenler
+Boylam farkı enlemin kosinüsüyle ölçeklenir, kutuplara yaklaştıkça meridyenler
 yakınsar. Origin noktasında hata sıfır, uzaklaştıkça büyür.
 
-### Dik uzaklık — `cross_track_distance_m`
+### Dik uzaklık `cross_track_distance_m`
 
 Konumun bacak doğru parçasına en kısa uzaklığı. Bacak uçlarının dışında kalınırsa
 uç noktaya olan mesafe kullanılır (doğru parçası, sonsuz doğru değil).
 
-### Çember kesişimi — `circle_entry_fraction`
+### Çember kesişimi `circle_entry_fraction`
 
 Doğru parçası ile çemberin **giriş** noktasını $[0,1]$ oranı olarak döndürür.
 Matematiği [§4](#4-matematiksel-temel)'te; kullanımı
 [10 - Varış Tespiti](10-varis-tespiti.md)'nde.
 
-### Son giriş — `last_circle_entry_on_route`
+### Son giriş `last_circle_entry_on_route`
 
 Bir rotanın bir çembere **son dıştan-içe girişini** bulur. Rota koruma bölgesine
 girip yeniden çıkabilir; bekleme için geri dönülemez son fırsat **sonraki**
@@ -100,7 +100,7 @@ $R = 6378137$ m için mesafeye göre:
 kullanılmasından gelir: WGS84'te meridyen eğrilik yarıçapı 47.5° enlemde
 6378137 değil ~6367000 m'dir. Bağıl fark ~%0.17 → 2500 m'de 4.4 m mertebesi.
 
-### Çember–doğru parçası kesişimi
+### Çemberdoğru parçası kesişimi
 
 $P(t) = P_0 + t(P_1 - P_0)$, çember merkezi orijinde, yarıçap $r$:
 
@@ -134,7 +134,7 @@ aralığında jeodezik mesafeye göre ikili arama yapılır:
 
 $$f(t) = \text{geodesic}(P(t),\; \text{merkez}) - r$$
 
-40 iterasyonda kalan belirsizlik $0.04 \times L_{\text{bacak}} / 2^{40}$ —
+40 iterasyonda kalan belirsizlik $0.04 \times L_{\text{bacak}} / 2^{40}$
 nanometre altı. Aşırıya kaçmış bir sayı ama maliyet önemsiz: fonksiyon görev
 başına yalnızca **iki kez** çağrılır (kapı kurulumu ve terminal giriş noktası).
 
@@ -193,7 +193,7 @@ flowchart LR
 | Sabit | Değer | Etki |
 |---|---|---|
 | `_GEOD` | `Geodesic.WGS84` | Elipsoit modeli. Küresel modele geçmek 2.5 km'de ~3 m hata ekler. |
-| `_EARTH_RADIUS_M` | 6378137.0 | Yerel düzlem ölçeği (ekvatoral yarıçap). 47.5°'de meridyen eğriliği ~6367 km olduğu için uzak mesafede %0.17 sapma verir — jeodezik düzeltmenin gerekçesi. |
+| `_EARTH_RADIUS_M` | 6378137.0 | Yerel düzlem ölçeği (ekvatoral yarıçap). 47.5°'de meridyen eğriliği ~6367 km olduğu için uzak mesafede %0.17 sapma verir jeodezik düzeltmenin gerekçesi. |
 | Düzeltme bandı | ±0.02 bacak | İkili aramanın kuşatma aralığı. İzdüşüm hatasından büyük olması yeter. |
 | Düzeltme iterasyonu | 40 | Fazlasıyla yeterli; maliyet önemsiz (görev başına iki çağrı). |
 
@@ -218,7 +218,7 @@ $$\Delta\text{lon} = +0.012245° \rightarrow \text{east} = \frac{0.012245 \times
 
 $$d_{\text{düzlem}} = \sqrt{923.3^2 + 919.4^2} = \sqrt{852{,}483 + 845{,}296} = 1303.0\ \text{m}$$
 
-**Fark: 1304 − 1303 = 1 m** — 1.3 km'de %0.08. Bu bacak için düzlem kabul
+**Fark: 1304 − 1303 = 1 m**, 1.3 km'de %0.08. Bu bacak için düzlem kabul
 edilebilir, ama rota toplamında (9269 m) hata birikir; o yüzden mesafeler daima
 jeodezik hesaplanır.
 
@@ -242,7 +242,7 @@ dışında kalabilir ve varış hiç görülmezdi.
 
 ## 8. Sonuç Nasıl Olur?
 
-Modül saf fonksiyonlar sunar — durum tutmaz, yan etkisi yoktur. Çıktılar:
+Modül saf fonksiyonlar sunar, durum tutmaz, yan etkisi yoktur. Çıktılar:
 metre cinsinden mesafe, `(doğu, kuzey)` metre çifti, `[0,1]` oranı ya da `None`.
 
 Tüm sistem geometriyi buradan alır: rota uzunluğu, kalan mesafe, rota sapması
@@ -254,7 +254,7 @@ denetimi, kabul çemberi, kapı yerleşimi.
   için geçerli; farklı irtifalarda eğik mesafe gerekirdi.
 - **Yerel düzlem uzakta bozulur.** `to_local_xy` origin'den uzaklaştıkça hata
   büyütür. Birkaç yüz metre için güvenli, kilometrelerce için değil. Kod bu
-  ayrımı **dokümante eder ama zorlamaz** — yanlış kullanım sessizce yanlış sonuç
+  ayrımı **dokümante eder ama zorlamaz**, yanlış kullanım sessizce yanlış sonuç
   verir.
 - **Elipsoit yüksekliği yok.** Jeoit-elipsoit ayrımı (Seattle civarında ~−22 m)
   hesaba girmez; yatay mesafeler için önemsizdir.
@@ -292,15 +292,15 @@ def to_local_xy(point: LatLon, origin: LatLon) -> Tuple[float, float]:
 
 ## 12. İlgili Kavramlar
 
-- [10 - Varış Tespiti](10-varis-tespiti.md) — `circle_entry_fraction`'ın ana tüketicisi.
-- [12 - Son Yasal Kapı](12-son-yasal-kapi.md) — `last_circle_entry_on_route` ve jeodezik düzeltme.
-- [07 - Rüzgâr Düzeltmeli Rota Süresi](07-ruzgar-duzeltmeli-rota-suresi.md) — bacak yönünü `to_local_xy` ile çıkarır.
-- [08 - ETA ve Kalan Mesafe](08-eta-ve-kalan-mesafe.md) — jeodezik mesafeyle rota takibi.
+- [10 - Varış Tespiti](10-varis-tespiti.md) `circle_entry_fraction`'ın ana tüketicisi.
+- [12 - Son Yasal Kapı](12-son-yasal-kapi.md) `last_circle_entry_on_route` ve jeodezik düzeltme.
+- [07 - Rüzgâr Düzeltmeli Rota Süresi](07-ruzgar-duzeltmeli-rota-suresi.md) bacak yönünü `to_local_xy` ile çıkarır.
+- [08 - ETA ve Kalan Mesafe](08-eta-ve-kalan-mesafe.md) jeodezik mesafeyle rota takibi.
 
 ## 13. Kaynaklar
 
-- Vaka belgesi madde 4: *"rotadan en fazla 500m sapma sağlanmalıdır"* —
+- Vaka belgesi madde 4: *"rotadan en fazla 500m sapma sağlanmalıdır"*
   `cross_track_distance_m`'in ölçtüğü büyüklük.
-- C. F. F. Karney, *Algorithms for geodesics* (2013) — `geographiclib`'in temeli.
-- `tests/unit/test_geodesy.py` — kapı yerleşiminin ±2 m toleransla doğrulandığı
+- C. F. F. Karney, *Algorithms for geodesics* (2013) `geographiclib`'in temeli.
+- `tests/unit/test_geodesy.py` kapı yerleşiminin ±2 m toleransla doğrulandığı
   ve jeodezik düzeltmeyi gerektiren testler.

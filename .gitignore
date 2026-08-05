@@ -34,3 +34,9 @@ wheelhouse/*.tar.gz
 .vscode/
 .idea/
 *.swp
+
+# Ham ekran kayitlari ve olay loglari buyuk; teslim edilen montajli
+# video (video/oasy_*.mp4) izlenmeye devam eder.
+video/ham_*.mp4
+video/olaylar_*.log
+video/*.ass

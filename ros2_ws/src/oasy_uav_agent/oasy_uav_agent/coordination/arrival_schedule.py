@@ -1,39 +1,23 @@
-"""Merkeziyetsiz varis zamanlamasi sozlesmesi.
-
-Her arac kendi referans varis zamanini yalnizca peer'larin *taahhut edilmis*
-degerlerinden hesaplar; hicbir arac digerine komut vermez.
-
-Iki tasarim karari onemli:
-
-  - Referans, goreli sure degil mutlak an olarak tasinir. "ETA + 20" bir
-    suredir ve mesaj gecikmesiyle anlamini yitirir; mutlak monotonic zaman
-    damgasi gecikmeye bagisiktir.
-  - Yalnizca taahhut edilmis degerler kullanilir. Anlik ETA'ya baglanmak,
-    onculun tahmin gurultusunu zincirleme buyutur ve hiz komutlarinda
-    salinim yaratir.
-
-Sira dokumanla sabittir: HA-1, HA-2, HA-3. Kucuk numarali arac oncedir ve
-hicbir zaman buyuk numaraliyi takip etmez.
-"""
+"""araçların merkeziyetsiz varış zamanlarını hesaplar"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
-# Vaka dokumani: ardisik varislar arasinda tam 20 saniye.
-ARRIVAL_SEPARATION_S = 20.0
-NANOSECONDS_PER_SECOND = 1_000_000_000
+ARRIVAL_SEPARATION_S = 20.0  # ardışık varışlar arasındaki hedef süre
+NANOSECONDS_PER_SECOND = 1_000_000_000  # saniyedeki nanosaniye sayısı
 
 
 @dataclass(frozen=True)
 class ReferenceArrival:
-    """Hesaplanmis referans varis ani ve hangi peer'lardan turedigi."""
+    """referans varış anını ve kaynak araçları tutar"""
 
     monotonic_ns: Optional[int]
     source_vehicle_ids: Tuple[int, ...]
 
     @property
     def resolved(self) -> bool:
+        """referans varış anının belirlenip belirlenmediğini döner"""
         return self.monotonic_ns is not None
 
 
@@ -42,15 +26,7 @@ def compute_reference_arrival(
     committed_arrivals: Dict[int, int],
     separation_s: float = ARRIVAL_SEPARATION_S,
 ) -> ReferenceArrival:
-    """Aracin hedeflemesi gereken mutlak varis anini hesaplar.
-
-    Her onceki arac j icin en az separation_s * (i - j) kadar sonra varilmali;
-    kisitlarin en gec olani baglayicidir. Bir peer kaybolursa kalan peer'lardan
-    turetilen kisit gecerli kalir.
-
-    Oncu arac (en kucuk numara) icin referans yoktur; kendi nominal planini
-    kullanir.
-    """
+    """aracın hedeflemesi gereken mutlak varış anını hesaplar"""
     separation_ns = int(separation_s * NANOSECONDS_PER_SECOND)
     reference_ns: Optional[int] = None
     sources = []
@@ -70,15 +46,7 @@ def compute_feasible_anchor(
     feasible_arrivals: Dict[int, int],
     separation_s: float = ARRIVAL_SEPARATION_S,
 ) -> Optional[int]:
-    """Butun araclarin ulasabilecegi ortak zamanlama capasini bulur.
-
-    Her arac icin capa adayi, o aracin en erken ulasabilecegi andan kendi
-    sira gecikmesi cikarilarak bulunur. Baglayici olan en gec adaydir; yani
-    capayi en yavas arac belirler.
-
-    Ayni yayin verisini goren butun araclar ayni sonucu bagimsiz hesaplar,
-    dolayisiyla merkezi bir karar noktasi olusmaz.
-    """
+    """bütün araçların ulaşabileceği ortak zamanlama çıpasını bulur"""
     anchor_ns: Optional[int] = None
     for vehicle_id, arrival_ns in feasible_arrivals.items():
         offset_ns = int((vehicle_id - 1) * separation_s * NANOSECONDS_PER_SECOND)
@@ -93,12 +61,12 @@ def target_arrival(
     vehicle_id: int,
     separation_s: float = ARRIVAL_SEPARATION_S,
 ) -> int:
-    """Capadan aracin kendi hedef varis anini turetir."""
+    """çıpadan aracın hedef varış anını hesaplar"""
     return anchor_ns + int((vehicle_id - 1) * separation_s * NANOSECONDS_PER_SECOND)
 
 
 def compute_takeoff_time(reference_arrival_ns: int, nominal_flight_s: float) -> int:
-    """Referans varisa yetismek icin kalkisin yapilmasi gereken an."""
+    """referans varış için gereken kalkış anını hesaplar"""
     return reference_arrival_ns - int(nominal_flight_s * NANOSECONDS_PER_SECOND)
 
 
@@ -110,14 +78,7 @@ def compute_gate_release_window(
     early_margin_s: float = 0.0,
     late_margin_s: float = 0.0,
 ) -> Optional[Tuple[int, int]]:
-    """Hedeften, son yasal kapinin gecis zaman araligini turetir.
-
-    Kapidan sonra loiter yoktur. E terminalde gec kalmamak icin gereken
-    sureyi, L ise erken varisi yalniz hizla onleyebilecegimiz en uzun sureyi
-    temsil eder. Donen aralik bos olabilir; bu, secilen bozucu modeli ve
-    marjlar altinda kapidan sonraki kontrol yetkisinin yetersiz oldugunu
-    acikca gosterir.
-    """
+    """hedeften son yasal kapının geçiş zaman aralığını hesaplar"""
     if target_arrival_ns <= 0 or terminal_earliest_s < 0.0 or terminal_latest_s < 0.0:
         return None
     if early_margin_s < 0.0 or late_margin_s < 0.0:

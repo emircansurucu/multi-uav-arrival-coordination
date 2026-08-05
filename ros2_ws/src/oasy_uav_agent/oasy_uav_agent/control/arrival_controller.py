@@ -1,19 +1,4 @@
-"""Varis zamanini seyir hiziyla duzenleyen kontrolcu.
-
-Kontrol yasasi: yeni komut = mevcut komut * (ETA / kalan sure).
-
-Kalan mesafeyi kalan sureye bolmek yeterli degildir; o hesap yer hizi
-uretir ve komut edilen hava hizi ile olusan yer hizi arasindaki farki
-(donus kayiplari, ruzgar, irtifada TAS/EAS farki) gormez. ETA zaten mevcut
-ilerleme hizindan turedigi icin ETA/kalan sure orani dogrudan gereken
-olceklemeyi verir ve bu farklari kendiliginden kapsar.
-
-Uc koruma zorunlu:
-  - deadband: kucuk hatalarda mudahale edilmez, yoksa kontrolcu surekli
-    hiz degistirip salinim uretir.
-  - saturation: komut otopilotun guvenli hava hizi araligi disina cikamaz.
-  - rate limit: ani hiz sicramalari engellenir.
-"""
+"""varış zamanını seyir hızıyla düzenler"""
 from __future__ import annotations
 
 import math
@@ -21,15 +6,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
-NANOSECONDS_PER_SECOND = 1_000_000_000
-# Varisa cok az kaldiginda gerekli hiz sonsuza gider; bu esigin altinda
-# komut degistirilmez.
-MIN_REMAINING_TIME_S = 15.0
-# Komut, en son gonderilen degerden bu kadar uzaklastiginda yeniden
-# gonderilir. Karsilastirma bir onceki tick'e gore yapilirsa rate limit
-# adimi (0.5 m/s^2 * 0.05 s = 0.025 m/s) bu esigin altinda kaldigi icin
-# hicbir komut gonderilmez.
-MIN_COMMAND_STEP_MPS = 0.1
+NANOSECONDS_PER_SECOND = 1_000_000_000  # saniyedeki nanosaniye sayısı
+MIN_REMAINING_TIME_S = 15.0  # oran tabanlı kontrolün en kısa kalan süresi
+MIN_COMMAND_STEP_MPS = 0.1  # yeni hız komutu için gereken en küçük fark
 
 
 class ControlAction(Enum):
@@ -40,7 +19,7 @@ class ControlAction(Enum):
 
 @dataclass(frozen=True)
 class SpeedCommand:
-    """Tek bir kontrol adiminin sonucu ve hangi sinirlayicilardan gectigi."""
+    """tek bir hız kontrolü sonucunu tutar"""
 
     action: ControlAction
     airspeed_mps: float
@@ -53,7 +32,7 @@ class SpeedCommand:
 
 
 class ArrivalController:
-    """Taahhut edilen varis anina gore seyir hizini duzenler."""
+    """taahhüt edilen varış anına göre seyir hızını düzenler"""
 
     def __init__(
         self,
@@ -63,6 +42,7 @@ class ArrivalController:
         rate_limit_mps_per_s: float,
         deadband_s: float,
     ) -> None:
+        """hız sınırlarını ve kontrolün başlangıç değerlerini hazırlar"""
         if not min_airspeed_mps < max_airspeed_mps:
             raise ValueError("min_airspeed_mps, max_airspeed_mps'ten kucuk olmali")
         self._min_airspeed_mps = min_airspeed_mps
@@ -74,6 +54,7 @@ class ArrivalController:
 
     @property
     def commanded_airspeed_mps(self) -> float:
+        """son hesaplanan hedef hava hızını döner"""
         return self._commanded_mps
 
     def update(
@@ -85,24 +66,14 @@ class ArrivalController:
         dt_s: float,
         forced_airspeed_mps: Optional[float] = None,
     ) -> Optional[SpeedCommand]:
-        """Yeni hiz komutunu hesaplar. Kontrol uygulanamiyorsa None doner.
-
-        Son yaklasmada hiz tavani indirmek denendi ve geri alindi: 13 m/s'lik
-        ruzgar profilinde 5 m kabul yaricapini kurtariyordu ama profil gercekci
-        araliga (4-10 m/s) cekilince o sorun zaten kayboldu, buna karsilik
-        sabit ruzgarda gec kalan araci daha da geciktirdi (olculen: hedefe
-        665 m kala hata +0.1 s / 27.9 m/s iken, tavan devreye girince 550 m'de
-        +7.6 s / 22.9 m/s).
-        """
+        """yeni hız komutunu hesaplar uygulanamıyorsa none döndürür"""
         if planned_arrival_monotonic_ns <= 0:
             return None
 
         remaining_time_s = (
             planned_arrival_monotonic_ns - now_monotonic_ns
         ) / NANOSECONDS_PER_SECOND
-        # Normal ETA orani son saniyelerde sayisal olarak kullanisli degildir.
-        # Rezerv bariyeri ise tam bu bolgede min/max hiz isteyebilir; acik bir
-        # zorlamaysa rate-limit korunarak uygulanmasina izin verilir.
+        # son saniyelerde yalnızca zorlanmış hız komutu uygulanır
         if remaining_time_s < MIN_REMAINING_TIME_S and forced_airspeed_mps is None:
             return None
 
@@ -163,4 +134,5 @@ class ArrivalController:
 
 
 def _clamp(value: float, lower: float, upper: float) -> float:
+    """değeri verilen alt ve üst sınırlar içinde tutar"""
     return max(lower, min(upper, value))

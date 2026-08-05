@@ -9,7 +9,7 @@ doğru değildir. Çünkü uçağın kontrol ettiği şey **hava içindeki** hı
 üzerinde ne kadar ilerlediği rüzgâra bağlıdır.
 
 Sezgi: Yürüyen merdivende yürüyorsun. Adım hızın sabit (hava hızı), ama yere göre
-ne kadar hızlı gittiğin merdivenin yönüne bağlı — arkandan gidiyorsa hızlanırsın,
+ne kadar hızlı gittiğin merdivenin yönüne bağlı, arkandan gidiyorsa hızlanırsın,
 karşıdan geliyorsa yavaşlarsın. Ayrıca merdiven **yana** kayıyorsa, düz gitmek
 için yana doğru eğik yürümen gerekir; bu da ileri hızından çalar.
 
@@ -43,13 +43,13 @@ Görünüşte masum. Ama ölçülen yer hızı gürültülüdür ve dönüşlerd
 komutu titriyor, plan sürekli yeniden kuruluyordu.
 
 Model tabanlı hesaba geçince **salınım ±15 s'den ±0.7 s'ye indi.** Üstelik bu
-tek bir düzeltme üç ayrı belirtiyi birden kapattı — hepsi aynı kök nedenden
+tek bir düzeltme üç ayrı belirtiyi birden kapattı, hepsi aynı kök nedenden
 geliyordu. Ders, kod yorumlarında da kayıtlı: *ölçülen hıza bölmeyin, modeli
 kullanın.*
 
 ## 3. Nasıl Çalışır? (Adım Adım)
 
-### Adım 1 — Rotayı bacaklara ayır
+### Adım 1 Rotayı bacaklara ayır
 
 `route_duration_with_wind_s(home, route, airspeed, wind)`
 ([wind_estimator.py:156](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/estimation/wind_estimator.py#L156))
@@ -60,7 +60,7 @@ noktalar = [baslangic, WP1, WP2, ..., hedef]
 bacaklar = (baslangic→WP1), (WP1→WP2), ..., (WPn→hedef)
 ```
 
-### Adım 2 — Her bacak için birim yön vektörü
+### Adım 2 Her bacak için birim yön vektörü
 
 Bacak, başlangıç noktası merkezli yerel düzleme izdüşürülür ve normalize edilir:
 
@@ -70,7 +70,7 @@ length_m = math.hypot(east_m, north_m)
 along = (east_m / length_m, north_m / length_m)
 ```
 
-### Adım 3 — Rüzgârı bacak eksenine ayrıştır
+### Adım 3 Rüzgârı bacak eksenine ayrıştır
 
 Rüzgâr vektörü iki bileşene ayrılır: bacak **boyunca** ve bacağa **dik**.
 
@@ -79,7 +79,7 @@ wind_along = wind.east * along[0] + wind.north * along[1]   # nokta carpim
 wind_cross = -wind.east * along[1] + wind.north * along[0]  # dik bilesen
 ```
 
-### Adım 4 — Yengeç düzeltmesi ve ileri hız
+### Adım 4 Yengeç düzeltmesi ve ileri hız
 
 Uçak bacak doğrultusunu tutturmak için burnunu rüzgâra kırar (crab). Bu, hava
 hızının bir kısmını yana harcar; ileri kalan bileşen Pisagor'dan çıkar:
@@ -88,12 +88,12 @@ hızının bir kısmını yana harcar; ileri kalan bileşen Pisagor'dan çıkar:
 forward = math.sqrt(airspeed**2 - wind_cross**2) + wind_along
 ```
 
-### Adım 5 — Süreyi topla, tabanı uygula
+### Adım 5 Süreyi topla, tabanı uygula
 
 $$t_{\text{bacak}} = \frac{L_{\text{bacak}}}{v_{\text{yer}}}, \qquad
 t_{\text{toplam}} = \sum_{\text{bacaklar}} t_{\text{bacak}}$$
 
-Yer hızı `_MIN_GROUND_SPEED_MPS = 1.0` ile alttan sınırlanır — aksi halde rüzgâr
+Yer hızı `_MIN_GROUND_SPEED_MPS = 1.0` ile alttan sınırlanır, aksi halde rüzgâr
 hava hızını aştığında süre sonsuza gider ve plan hesabı çöker.
 
 ## 4. Matematiksel Temel
@@ -120,7 +120,7 @@ Karekökün içi negatif olamaz:
 
 $$|w_{\perp}| < V_a$$
 
-Yan rüzgâr hava hızını aşarsa uçak **o bacak doğrultusunu tutturamaz** — rüzgâr
+Yan rüzgâr hava hızını aşarsa uçak **o bacak doğrultusunu tutturamaz**, rüzgâr
 onu yanlara sürükler. Kod bu durumda tabana düşer:
 
 ```python
@@ -129,7 +129,7 @@ if abs(wind_cross) >= airspeed_mps:
 ```
 
 Bu, bizim zarfımızda gerçekleşebilir: asgari hava hızı 13 m/s, doğrulama
-rüzgârının tepesi 10 m/s. Tam yan rüzgârda $|w_\perp| = 10 < 13$ — sınırın
+rüzgârının tepesi 10 m/s. Tam yan rüzgârda $|w_\perp| = 10 < 13$, sınırın
 altında ama payı dar.
 
 ### Yan rüzgârın gizli maliyeti
@@ -140,7 +140,7 @@ Yanlış. $V_a = 13$, $w_\perp = 10$ için:
 $$V_{a,\parallel} = \sqrt{169 - 100} = \sqrt{69} = 8.31\ \text{m/s}$$
 
 **Hava hızının %36'sı yengeç açısına gidiyor.** Süre neredeyse 1.6 katına çıkar
-— hiç boylamsal rüzgâr olmadan.
+hiç boylamsal rüzgâr olmadan.
 
 ### Toplam süre
 
@@ -150,7 +150,7 @@ Semboller: $L_i$ bacak uzunluğu, $\hat{u}_i$ bacak yönü, $v_{\min} = 1.0$ m/s
 
 ## 5. Geometrik/Görsel Sezgi
 
-Yengeç üçgeni — uçak bacak doğrultusunu tutturmak için burnunu kırar:
+Yengeç üçgeni, uçak bacak doğrultusunu tutturmak için burnunu kırar:
 
 ```
                     bacak dogrultusu (u)
@@ -178,14 +178,14 @@ Yengeç üçgeni — uçak bacak doğrultusunu tutturmak için burnunu kırar:
 | WP3→WP4 | 294° | 3003 m | −7.60 | +5.53 | **8.26** | 363.5 s |
 | WP4→hedef | 135° | 1304 m | +9.08 | −2.43 | **25.71** | 50.7 s |
 
-Yer hızı 7.45 ile 25.71 m/s arasında değişiyor — **3.4 kat fark**, tek bir
+Yer hızı 7.45 ile 25.71 m/s arasında değişiyor, **3.4 kat fark**, tek bir
 rüzgârla. Rota ilmek attığı için araç önce rüzgâra karşı tırmanıyor, son bacakta
 arkasına alıyor.
 
 İki gözlem:
 
 - **WP2→WP3 en yavaş bacak** ($w_\perp$ neredeyse sıfır, $w_\parallel = -9.29$)
-  — saf karşı rüzgâr, yengeç maliyeti yok ama boylamsal kayıp maksimum.
+ , saf karşı rüzgâr, yengeç maliyeti yok ama boylamsal kayıp maksimum.
 - **WP1→WP2'de gizli maliyet var:** $w_\perp = -7.45$ olduğu için hava hızının
   $16.8 - \sqrt{16.8^2 - 7.45^2} = 1.75$ m/s'si yengeç açısına gidiyor. Bu,
   boylamsal kayba (−5.73) ek olarak binen ve kolayca gözden kaçan bir etkidir.
@@ -217,7 +217,7 @@ flowchart TD
 | `_MIN_GROUND_SPEED_MPS` | 1.0 m/s | Rüzgâr hava hızını aştığında sonsuz süreyi engeller. Bu tabana düşmek "bu bacak uçulamaz" demektir; sessizce yutulmamalı. |
 | `wind` (argüman) | kestirimden | [06 - Rüzgâr Kestirimi](06-ruzgar-kestirimi.md)'nden gelir. Oturmamışsa sıfır rüzgâr varsayılır. |
 
-**Ayar ipucu:** Bu fonksiyonda ayarlanacak bir şey yok — model fiziktir. Süre
+**Ayar ipucu:** Bu fonksiyonda ayarlanacak bir şey yok, model fiziktir. Süre
 yanlış çıkıyorsa hata ya rüzgâr kestiriminde ya da geçilen `airspeed_mps`
 değerindedir. Bu oturumda tam bu ikincisi bir kez ısırdı: manevra planlaması
 13 m/s varsayarken araç 28 m/s uçuyordu.
@@ -243,7 +243,7 @@ $$w_{\parallel} = 4.70(0.7071) + (-8.14)(-0.7071) = 3.324 + 5.756 = +9.08\ \text
 
 $$w_{\perp} = -4.70(-0.7071) + (-8.14)(0.7071) = 3.324 - 5.756 = -2.43\ \text{m/s}$$
 
-**Fizibilite:** $|{-2.43}| = 2.43 < 16.8$ ✓ — bacak tutturulabilir.
+**Fizibilite:** $|{-2.43}| = 2.43 < 16.8$ ✓, bacak tutturulabilir.
 
 **İleri bileşen:**
 
@@ -259,11 +259,11 @@ $$v_{\text{yer}} = 16.62 + 9.08 = \mathbf{25.70\ \text{m/s}}$$
 
 $$t = \frac{1304}{25.70} = 50.7\ \text{s}$$
 
-**Karşılaştırma — rüzgâr yok sayılsaydı:**
+**Karşılaştırma, rüzgâr yok sayılsaydı:**
 
 $$t_{\text{naif}} = \frac{1304}{16.8} = 77.6\ \text{s}$$
 
-**Fark 26.9 saniye** — tek bir bacakta, 20 saniyelik varış şartının bir buçuk
+**Fark 26.9 saniye**, tek bir bacakta, 20 saniyelik varış şartının bir buçuk
 katı. Rüzgâr modeli olmadan bu bacak tek başına takvimi yıkardı.
 
 **Asgari hızda ne olurdu?** $V_a = 13$ için:
@@ -271,7 +271,7 @@ katı. Rüzgâr modeli olmadan bu bacak tek başına takvimi yıkardı.
 $$v_{\text{yer}} = \sqrt{169 - 5.9} + 9.08 = 12.77 + 9.08 = 21.85\ \text{m/s}$$
 
 Nominal seyir yer hızı 22.9 m/s. Yani **gaz tamamen kesilse bile araç nominalden
-yavaş gitmiyor** — bu bacakta zaman kazanma yetkisi yok. Sistemin en zorlu
+yavaş gitmiyor**, bu bacakta zaman kazanma yetkisi yok. Sistemin en zorlu
 kısıtı budur ve [12 - Son Yasal Kapı](12-son-yasal-kapi.md) ile
 [13 - Terminal Rezerv](13-terminal-rezerv.md) bunun için vardır.
 
@@ -282,7 +282,7 @@ tick'te yeniden hesaplanır (rüzgâr ve komut edilen hız değiştikçe güncel
 
 İyi vaka: model ile ölçüm 0.1 m/s içinde örtüşür ([§7](#7-çalışılmış-örnek-gerçek-sayılarla)).
 Kötü vaka: rüzgâr kestirimi bayatsa ya da geçilen hava hızı uçuştakinden
-farklıysa model sessizce yanılır — süre makul görünür ama yanlıştır. Bu sessizlik
+farklıysa model sessizce yanılır, süre makul görünür ama yanlıştır. Bu sessizlik
 tehlikelidir; hatayı ancak varış anında görürsünüz.
 
 ## 9. Sınırlamalar / Yapamayacağı
@@ -325,13 +325,13 @@ def _ground_speed_along_leg_mps(start, end, airspeed_mps, wind):
     length_m = math.hypot(east_m, north_m)
     along = (east_m / length_m, north_m / length_m)
 
-    # Ruzgarin bacaga dik bileseni crab ile dengelenir; bu, ileri yonde
-    # kullanilabilir hava hizini azaltir.
+    # rüzgârın bacağa dik bileşeni crab ile dengelenir, ileri yönde
+    # kullanılabilir hava hızını azaltır
     wind_along = wind.east_mps * along[0] + wind.north_mps * along[1]
     wind_cross = -wind.east_mps * along[1] + wind.north_mps * along[0]
 
     if abs(wind_cross) >= airspeed_mps:
-        # Yan ruzgar hava hizini asiyorsa bacak dogrultusu tutturulamaz.
+        # yan rüzgâr hava hızını aşıyorsa bacak doğrultusu tutturulamaz
         return _MIN_GROUND_SPEED_MPS
 
     forward = math.sqrt(airspeed_mps ** 2 - wind_cross ** 2) + wind_along
@@ -340,17 +340,17 @@ def _ground_speed_along_leg_mps(start, end, airspeed_mps, wind):
 
 ## 12. İlgili Kavramlar
 
-- [06 - Rüzgâr Kestirimi](06-ruzgar-kestirimi.md) — girdi olan $\vec{w}$'yi üretir.
-- [08 - ETA ve Kalan Mesafe](08-eta-ve-kalan-mesafe.md) — bu modeli her tick'te çağırır.
-- [14 - Robust E/L Sınırları](14-robust-e-l-sinirlari.md) — modeli bir rüzgâr zarfı üzerinde tarar.
-- [05 - Kalkış Slotu](05-kalkis-slotu-ve-yer-gecikmesi.md) — nominal uçuş süresini buradan alır.
-- [11 - Varış Zamanı Kontrolcüsü](11-varis-zamani-kontrolcusu.md) — modelin ürettiği ETA'yı hata sinyaline çevirir.
+- [06 - Rüzgâr Kestirimi](06-ruzgar-kestirimi.md) girdi olan $\vec{w}$'yi üretir.
+- [08 - ETA ve Kalan Mesafe](08-eta-ve-kalan-mesafe.md) bu modeli her tick'te çağırır.
+- [14 - Robust E/L Sınırları](14-robust-e-l-sinirlari.md) modeli bir rüzgâr zarfı üzerinde tarar.
+- [05 - Kalkış Slotu](05-kalkis-slotu-ve-yer-gecikmesi.md) nominal uçuş süresini buradan alır.
+- [11 - Varış Zamanı Kontrolcüsü](11-varis-zamani-kontrolcusu.md) modelin ürettiği ETA'yı hata sinyaline çevirir.
 
 ## 13. Kaynaklar
 
-- Vaka belgesi madde 5: seyir hızının dinamik yönetimi — bu modelin hangi
+- Vaka belgesi madde 5: seyir hızının dinamik yönetimi bu modelin hangi
   yöntemi beslediği.
-- Doğrulama koşusu `logs/run_20260804_153014` — [§7](#7-çalışılmış-örnek-gerçek-sayılarla)'deki
+- Doğrulama koşusu `logs/run_20260804_153014` [§7](#7-çalışılmış-örnek-gerçek-sayılarla)'deki
   25.70 m/s model çıktısının telemetriyle karşılaştırıldığı koşu.
-- Kod yorumu, `mission_manager.py` — ölçülen hıza bölme kusurunun ve ±15 s → ±0.7 s
+- Kod yorumu, `mission_manager.py` ölçülen hıza bölme kusurunun ve ±15 s → ±0.7 s
   düzelmesinin kaydı.

@@ -5,13 +5,13 @@
 "Araç hedefe vardı" kararının **tam anını** bulmak.
 
 Belge diyor ki: hedefin kabul yarıçapı 5 metre alınabilir. Yani araç hedefin
-5 m'lik çemberine girdiği anda varmış sayılır. Kulağa basit geliyor —
+5 m'lik çemberine girdiği anda varmış sayılır. Kulağa basit geliyor
 "mesafeyi ölç, 5'in altına düşünce varış de."
 
 Ama telemetri **ayrık örneklerle** gelir. Araç 26 m/s hızla uçuyor ve detektör
 20 Hz besleniyorsa iki örnek arasında **1.3 metre** yol alır. Çemberden tam
-ortasından geçerse içeride 7–8 örnek düşer, sorun yok. Ama **kenarından**
-geçerse — ki 5 m'lik bir çemberde 4.9 m'den geçmek gayet mümkündür — içeride
+ortasından geçerse içeride 7-8 örnek düşer, sorun yok. Ama **kenarından**
+geçerse, ki 5 m'lik bir çemberde 4.9 m'den geçmek gayet mümkündür, içeride
 kalan yay 1.4 metreye iner ve tek bir örnek bile düşmeyebilir.
 
 Sezgi: Elinde saniyede yirmi kare çeken bir fotoğraf makinesi var ve koşan
@@ -44,7 +44,7 @@ bu anlar arasındaki farkla ölçülür. Ölçüm hatası doğrudan sonuca yans�
 
 ## 3. Nasıl Çalışır? (Adım Adım)
 
-### Adım 1 — Konumu hedef merkezli düzleme taşı
+### Adım 1 Konumu hedef merkezli düzleme taşı
 
 ```python
 current_xy = to_local_xy(position, self._target)
@@ -53,7 +53,7 @@ distance_m = math.hypot(*current_xy)
 
 Hedef merkezde olduğu için mesafe doğrudan vektör normudur.
 
-### Adım 2 — En yakın geçişi kaydet
+### Adım 2 En yakın geçişi kaydet
 
 ```python
 self.min_distance_m = min(self.min_distance_m, distance_m)
@@ -62,7 +62,7 @@ self.min_distance_m = min(self.min_distance_m, distance_m)
 Bu **başarı ölçütü değildir**. Yalnızca metrik ve teşhis içindir: varış
 olmadıysa "ne kadar yaklaşmıştı" sorusunu cevaplar.
 
-### Adım 3 — Bir önceki örnekle doğru parçası kur, çemberle kesiştir
+### Adım 3 Bir önceki örnekle doğru parçası kur, çemberle kesiştir
 
 ```python
 fraction = circle_entry_fraction(previous_xy, current_xy, self._radius_m)
@@ -72,7 +72,7 @@ fraction = circle_entry_fraction(previous_xy, current_xy, self._radius_m)
 **girdiği** noktayı $[0, 1]$ aralığında bir oran olarak döndürür; kesişim yoksa
 `None`.
 
-### Adım 4 — Giriş anını interpolasyonla bul
+### Adım 4 Giriş anını interpolasyonla bul
 
 ```python
 self.arrival_monotonic_ns = previous_ns + int(
@@ -82,18 +82,18 @@ self.arrival_monotonic_ns = previous_ns + int(
 
 Zaman, konumla aynı oranda ilerlemiş varsayılır (iki örnek arasında sabit hız).
 
-### Adım 5 — Türetilmiş mi işaretle
+### Adım 5 Türetilmiş mi işaretle
 
 ```python
 self.interpolated = distance_m > self._radius_m
 ```
 
 Eğer mevcut örnek çemberin **dışındaysa** ama kesişim bulunduysa, araç çemberi
-iki örnek arasında geçmiş demektir — varış anı doğrudan gözlenmedi, türetildi.
+iki örnek arasında geçmiş demektir, varış anı doğrudan gözlenmedi, türetildi.
 Bu bayrak logda raporlanır; ölçümün ne kadarının gözlem ne kadarının çıkarım
 olduğu gizlenmez.
 
-### Adım 6 — Mandalla
+### Adım 6 Mandalla
 
 ```python
 if self.arrived:
@@ -105,7 +105,7 @@ geçmek yeni bir varış üretmez.
 
 ## 4. Matematiksel Temel
 
-### Doğru parçası–çember kesişimi
+### Doğru parçasıçember kesişimi
 
 Ardışık iki konum $P_0, P_1$ (hedef merkezli yerel düzlemde), çember yarıçapı $r$.
 Doğru parçası:
@@ -122,7 +122,7 @@ $$a = \|P_1 - P_0\|^2, \qquad b = 2\,P_0 \cdot (P_1 - P_0), \qquad c = \|P_0\|^2
 
 $$t^* = \frac{-b - \sqrt{b^2 - 4ac}}{2a}$$
 
-Kesişim koşulu: $b^2 - 4ac \ge 0$ **ve** $t^* \in [0, 1]$. İkinci koşul önemli —
+Kesişim koşulu: $b^2 - 4ac \ge 0$ **ve** $t^* \in [0, 1]$. İkinci koşul önemli
 diskriminant pozitif olsa bile kesişim doğru parçasının dışında kalabilir
 (çember ileride ya da geride).
 
@@ -130,11 +130,11 @@ diskriminant pozitif olsa bile kesişim doğru parçasının dışında kalabili
 
 $$t_{\text{varış}} = t_{n-1} + t^* \left(t_n - t_{n-1}\right)$$
 
-### Hata analizi — interpolasyonun gerçek katkısı
+### Hata analizi interpolasyonun gerçek katkısı
 
 Detektör görev döngüsünün her tick'inde beslenir: `TICK_INTERVAL_S = 0.05` s,
 yani **20 Hz**. (Karıştırmamak gerekir: 5 Hz olan `status_publish_hz`, peer'lara
-yapılan *durum yayınıdır* — telemetri değil. Loglarda telemetri yaşı 0.00–0.04 s
+yapılan *durum yayınıdır*, telemetri değil. Loglarda telemetri yaşı 0.00-0.04 s
 görünür, bu 20 Hz beslemeyi doğrular.)
 
 Örnekleme aralığı $\Delta t = 0.05$ s, yer hızı $v \approx 26$ m/s → örnekler
@@ -147,7 +147,7 @@ $$v\,\Delta t = 26 \times 0.05 = 1.3\ \text{m}$$
 $$e_{\max} = \Delta t = 50\ \text{ms}$$
 
 Üç araç bağımsız hata yaparsa iki varış arasındaki farkın hatası
-$\sqrt{2} \times 50 = 71$ ms — ±1 s toleransın **%7'si**. Kritik değil ama
+$\sqrt{2} \times 50 = 71$ ms, ±1 s toleransın **%7'si**. Kritik değil ama
 bedava kazanılabilecek bir pay; interpolasyonla milisaniye mertebesine iner.
 
 ### Asıl risk: teğet geçiş
@@ -169,7 +169,7 @@ $$\ell = 2\sqrt{r^2 - d^2}$$
 | 4.0 m | 6.00 m | ~5 |
 | 4.79 m | 2.87 m | ~2 |
 | 4.95 m | 1.41 m | ~1 |
-| 4.99 m | 0.63 m | **0–1** |
+| 4.99 m | 0.63 m | **0-1** |
 
 Sınıra yaklaştıkça içeride örnek kalmama olasılığı hızla artar. İnterpolasyon
 bu kuyruk durumunu kapatır: kiriş ne kadar kısa olursa olsun, doğru parçası
@@ -213,14 +213,14 @@ flowchart TD
   I -->|hayir| G
   I -->|evet| J["varis ani = interpolasyon"]
   J --> K["interpolated bayragini isaretle"]
-  K --> L["True don — VARIS"]
+  K --> L["True don, VARIS"]
 ```
 
 ## 6. Parametreler ve Etkileri
 
 | Parametre | Değer | Etki |
 |---|---|---|
-| `DEFAULT_ARRIVAL_RADIUS_M` | 5.0 m | Belge madde 2'den: *"kabul yarıçapı 5 metre alınabilir"*. Büyütmek varışı erkene çeker ve ölçümü kolaylaştırır — ama şartın kendisini gevşetir. |
+| `DEFAULT_ARRIVAL_RADIUS_M` | 5.0 m | Belge madde 2'den: *"kabul yarıçapı 5 metre alınabilir"*. Büyütmek varışı erkene çeker ve ölçümü kolaylaştırır ama şartın kendisini gevşetir. |
 | `TICK_INTERVAL_S` | 0.05 s (20 Hz) | Detektörün besleme hızı. 26 m/s'de örnekler arası 1.3 m. Düşürmek teğet geçişte varışı kaçırma riskini artırır. |
 | `status_publish_hz` | 5 Hz | **Karıştırılmamalı:** bu peer yayın hızıdır, telemetri değil. Varış tespitiyle ilgisi yoktur. |
 
@@ -244,10 +244,10 @@ yakın geçiş mesafeleri:
 | HA-3 | 4.75 m | doğrudan |
 
 Üçü de 5 m sınırının altında; kabul ölçütü sağlandı. **Üçünde de tespit
-"doğrudan"** — yani çemberin içinde en az bir telemetri örneği düştü,
+"doğrudan"**, yani çemberin içinde en az bir telemetri örneği düştü,
 interpolasyona gerek kalmadı.
 
-**Peki interpolasyon boşuna mı?** Hayır — ne kadar dar bir paydan geçildiğine
+**Peki interpolasyon boşuna mı?** Hayır, ne kadar dar bir paydan geçildiğine
 bakalım. HA-2 en sınırdaki araç, 4.79 m. Çemberin içinde kalan kiriş:
 
 $$\ell = 2\sqrt{r^2 - d_{\min}^2} = 2\sqrt{25 - 22.94} = 2\sqrt{2.06} = 2.87\ \text{m}$$
@@ -259,7 +259,7 @@ $$\frac{2.87}{1.3} \approx 2.2$$
 
 **İki örnek.** Geçiş 0.2 m daha uzaktan olsaydı (4.99 m) kiriş 0.63 m'ye iner ve
 içeride örnek kalmama olasılığı ciddileşirdi. Yani bu koşuda interpolasyon
-devreye girmedi ama **marj iki örnekti** — sistemin sağlamlığı ona bağlı.
+devreye girmedi ama **marj iki örnekti**, sistemin sağlamlığı ona bağlı.
 
 **Zamanlama sonucu:** HA-2 − HA-1 = 19.89 s (sapma −0.11 s), HA-3 − HA-2 =
 20.17 s (sapma +0.17 s).
@@ -275,11 +275,11 @@ en fazla 50 ms yuvarlanır, üç araçta bileşik hata ~71 ms olur. Ölçülen s
 | Alan | Anlam |
 |---|---|
 | `arrival_monotonic_ns` | Varış anı (interpolasyonlu) |
-| `min_distance_m` | En yakın geçiş — metrik, ölçüt değil |
+| `min_distance_m` | En yakın geçiş metrik, ölçüt değil |
 | `interpolated` | Anın gözlemden mi çıkarımdan mı geldiği |
 
 Bu an peer'lara yayınlanır ve diğer araçların çıpa hesabına **olgu** olarak
-girer ([02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md)) — tahmin değil.
+girer ([02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md)), tahmin değil.
 
 ## 9. Sınırlamalar / Yapamayacağı
 
@@ -303,7 +303,7 @@ girer ([02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md)) — tahmin değil.
 | Çember kesişimi | [`geodesy.py` `circle_entry_fraction`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/estimation/geodesy.py) |
 | Çağrı yeri | [`mission_manager.py` `_track_arrival`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/mission_manager.py) |
 | Hedef WP yarıçapı | [`mission_builder.py` `TARGET_WP_ACCEPT_RADIUS_M`](../../ros2_ws/src/oasy_uav_agent/oasy_uav_agent/autopilot_adapter/mission_builder.py) |
-| Doğrulama | [`scripts/analyze_run.py`](../../scripts/analyze_run.py) — 5 m ölçütünü koşu logundan denetler |
+| Doğrulama | [`scripts/analyze_run.py`](../../scripts/analyze_run.py) 5 m ölçütünü koşu logundan denetler |
 
 ## 11. Kod Örneği
 
@@ -317,21 +317,21 @@ if self._previous is not None:
         self.arrival_monotonic_ns = previous_ns + int(
             fraction * (monotonic_ns - previous_ns)
         )
-        # Dogrudan cember icinde bir ornek yoksa giris ani turetilmistir.
+        # çember içinde doğrudan örnek yoksa giriş anı interpolasyonla bulunur
         self.interpolated = distance_m > self._radius_m
         return True
 ```
 
 ## 12. İlgili Kavramlar
 
-- [09 - Jeodezi](09-jeodezi.md) — `circle_entry_fraction` ve yerel düzlem izdüşümü.
-- [02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md) — varış anının olgu olarak çıpaya girmesi.
-- [01 - Görev Durum Makinesi](01-gorev-durum-makinesi.md) — varışın `ARRIVED` geçişini tetiklemesi.
-- [08 - ETA ve Kalan Mesafe](08-eta-ve-kalan-mesafe.md) — varıştan sonra ETA'nın anlamını yitirmesi.
+- [09 - Jeodezi](09-jeodezi.md) `circle_entry_fraction` ve yerel düzlem izdüşümü.
+- [02 - Merkeziyetsiz Çıpa](02-merkeziyetsiz-capa.md) varış anının olgu olarak çıpaya girmesi.
+- [01 - Görev Durum Makinesi](01-gorev-durum-makinesi.md) varışın `ARRIVED` geçişini tetiklemesi.
+- [08 - ETA ve Kalan Mesafe](08-eta-ve-kalan-mesafe.md) varıştan sonra ETA'nın anlamını yitirmesi.
 
 ## 13. Kaynaklar
 
 - Vaka belgesi madde 2: *"Hedef noktanın kabul yarıçapı 5 metre alınabilir,
   noktaya varıldıktan sonra HA'lar RTL moduna alınmalıdır."*
-- Doğrulama koşusu `logs/run_20260804_172043` — [§7](#7-çalışılmış-örnek-gerçek-sayılarla)'deki
+- Doğrulama koşusu `logs/run_20260804_172043` [§7](#7-çalışılmış-örnek-gerçek-sayılarla)'deki
   en yakın geçiş mesafeleri.

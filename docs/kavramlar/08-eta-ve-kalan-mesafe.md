@@ -9,11 +9,11 @@ Araç bir waypoint dizisini takip ediyor. Kalan mesafe iki parçadan oluşur:
 toplamı**.
 
 Zor kısım "şu an gittiğim waypoint" sorusudur. Araç bir noktaya en yakın olduğu
-anda ona gitmiyor olabilir — üzerinden geçmiş, bir sonrakine dönüyor olabilir.
+anda ona gitmiyor olabilir, üzerinden geçmiş, bir sonrakine dönüyor olabilir.
 Kabul yarıçapı 120 m olduğu için araç waypoint'in tam üstünden geçmez, kenarından
 kestirir.
 
-Sezgi: Otoyolda çıkışları sayıyorsun. "En yakın çıkış" yanlış ölçüttür — az önce
+Sezgi: Otoyolda çıkışları sayıyorsun. "En yakın çıkış" yanlış ölçüttür, az önce
 geçtiğin çıkış hâlâ en yakın olabilir. Doğru soru: **hangi çıkışı geçtim?**
 Geçtiysen artık bir sonrakine gidiyorsundur ve geri dönmezsin.
 
@@ -26,9 +26,9 @@ ilerletir ve **asla geri almaz**.
 
 | Çıktı | Kullanan |
 |---|---|
-| `active_index` — hangi bacaktayız | rota suffix'i, kapı geçiş denetimi, sapma ölçümü |
-| `remaining_distance_m` — kalan rota | kontrolcünün gerekli hız hesabı |
-| `progress_speed_mps` — ilerleme hızı | tanılama (ETA'da **kullanılmaz**, bkz. §9) |
+| `active_index` hangi bacaktayız | rota suffix'i, kapı geçiş denetimi, sapma ölçümü |
+| `remaining_distance_m` kalan rota | kontrolcünün gerekli hız hesabı |
+| `progress_speed_mps` ilerleme hızı | tanılama (ETA'da **kullanılmaz**, bkz. §9) |
 
 **Aktif indeksin doğru olması kritiktir** çünkü rota suffix'i ondan türetilir.
 Yanlış indeks, yanlış kalan rota, yanlış plan demektir. Ayrıca rota sapması
@@ -36,7 +36,7 @@ yanlış bacağa göre ölçülürse 500 m sınırı anlamsız yerde denetlenir.
 
 ## 3. Nasıl Çalışır? (Adım Adım)
 
-### Adım 1 — Geçildi mi? (`_has_passed`)
+### Adım 1 Geçildi mi? (`_has_passed`)
 
 Aktif waypoint'e giden bacak, yerel düzleme izdüşürülür. Aracın bu bacak
 üzerindeki **izdüşüm oranı** hesaplanır:
@@ -46,10 +46,10 @@ along_track = (current[0] * leg[0] + current[1] * leg[1]) / leg_squared
 return along_track > 1.0
 ```
 
-Oran 1'i aştıysa araç waypoint'in **ötesine** geçmiştir. Mesafeye bakılmaz —
+Oran 1'i aştıysa araç waypoint'in **ötesine** geçmiştir. Mesafeye bakılmaz
 kestirerek geçse bile izdüşüm oranı 1'i aşar.
 
-### Adım 2 — İndeksi ilerlet (`_advance_active_index`)
+### Adım 2 İndeksi ilerlet (`_advance_active_index`)
 
 ```python
 while self._active_index < len(self._route) - 1:
@@ -61,10 +61,10 @@ while self._active_index < len(self._route) - 1:
 `while` döngüsü önemli: tek tick'te birden fazla waypoint geçilmiş olabilir
 (telemetri kesintisi sonrası). İndeks **hedefte durur**, taşmaz.
 
-Geri gitme yoktur. Araç manevra yapıp geriye düşse bile indeks korunur — aksi
+Geri gitme yoktur. Araç manevra yapıp geriye düşse bile indeks korunur, aksi
 halde rota suffix'i salınır ve plan titrer.
 
-### Adım 3 — Kalan mesafe
+### Adım 3 Kalan mesafe
 
 ```python
 to_active = geodesic_distance_m(position, self._route[self._active_index])
@@ -74,7 +74,7 @@ return to_active + self._suffix_lengths[self._active_index]
 `_suffix_lengths` başlangıçta bir kez hesaplanır: her waypoint'ten hedefe kadar
 kalan rota uzunluğu. Böylece her tick'te tüm rota yeniden toplanmaz.
 
-### Adım 4 — İlerleme hızı
+### Adım 4 İlerleme hızı
 
 Hız vektörünün **aktif waypoint doğrultusundaki bileşeni**:
 
@@ -86,7 +86,7 @@ return velocity_en[0] * unit[0] + velocity_en[1] * unit[1]
 Yer hızının kendisi değil, hedefe **yaklaşma** hızı. Yan rüzgârda araç hızlı
 uçar ama yavaş yaklaşır; bu ayrımı yakalar.
 
-### Adım 5 — Filtrele
+### Adım 5 Filtrele
 
 Üstel hareketli ortalama, $dt$'den türetilen ağırlıkla:
 
@@ -125,7 +125,7 @@ $$v_{\text{ilerleme}} = \vec{v}_{\text{yer}} \cdot \hat{u}_{\text{aktif}}$$
 Bu, yer hızının büyüklüğünden **küçüktür** (eşitlik yalnızca tam hedefe doğru
 uçarken). Aradaki fark yengeç açısı ve dönüş geometrisidir.
 
-### ETA — ve neden kullanılmadığı
+### ETA ve neden kullanılmadığı
 
 Modül şunu hesaplar:
 
@@ -139,7 +139,7 @@ Neden: ölçülen hıza bölmek gürültüyü doğrudan ETA'ya taşır. Dönüş
 $v_{\text{ilerleme}}$ anlık olarak çöker, ETA fırlar, kontrolcü kovalar.
 **Ölçüldü: ETA salınımı ±15 s.** Model tabanlı hesaba geçilince **±0.7 s.**
 
-`progress_speed_mps` yine de yayınlanır — tanılama için değerlidir, ama plan
+`progress_speed_mps` yine de yayınlanır, tanılama için değerlidir, ama plan
 hesabına girmez.
 
 ## 5. Geometrik/Görsel Sezgi
@@ -215,8 +215,8 @@ izdüşüm:
 - WP4'e 118 m kala (en yakın): $s = 0.996$ → **hâlâ geçilmedi**
 - 60 m ötesinde: $s = 1.020$ → **geçildi**, indeks 4'e ilerler
 
-Dikkat: en yakın noktada ($118$ m) test **tetiklemedi**. Mesafe tabanlı bir test
-"120 m'nin altına indi, geçtim" derdi ve indeksi erken ilerletirdi — kalan mesafe
+En yakın noktada ($118$ m) test **tetiklemedi**. Mesafe tabanlı bir test
+"120 m'nin altına indi, geçtim" derdi ve indeksi erken ilerletirdi, kalan mesafe
 1304 m'ye düşerdi, oysa araç henüz WP4'ü geçmemişti.
 
 **İlerleme hızı örneği.** Rüzgâr 9.4 m/s 330°'den, araç WP4→hedef bacağında
@@ -233,7 +233,7 @@ $$v_{\text{ilerleme}} = 25.7 \times \cos(40°) = 19.7\ \text{m/s}$$
 $$\text{ETA}_{\text{düz}} = \frac{2504}{25.7} = 97.4\ \text{s}, \qquad
 \text{ETA}_{\text{dönüşte}} = \frac{2504}{19.7} = 127.1\ \text{s}$$
 
-**Fark 30 saniye** — araç aynı yerde, aynı hızda, sadece dönüş yapıyor.
+**Fark 30 saniye**, araç aynı yerde, aynı hızda, sadece dönüş yapıyor.
 Kontrolcü bu sinyali izleseydi 30 saniyelik hayalî bir gecikmeyi kapatmaya
 çalışır, hızlanır, sonra dönüş bitince fazla erken kalırdı. Ölçülen ±15 s'lik
 salınımın kaynağı tam budur.
@@ -284,21 +284,21 @@ def _advance_active_index(self, position: LatLon) -> None:
 ```
 
 ```python
-# _has_passed icinde: mesafe degil, bacak boyunca izdusum orani
+# _has_passed içinde mesafe değil, bacak boyunca izdüşüm oranı kullanılır
 along_track = (current[0] * leg[0] + current[1] * leg[1]) / leg_squared
 return along_track > 1.0
 ```
 
 ## 12. İlgili Kavramlar
 
-- [07 - Rüzgâr Düzeltmeli Rota Süresi](07-ruzgar-duzeltmeli-rota-suresi.md) — ETA'yı gerçekte üreten model.
-- [09 - Jeodezi](09-jeodezi.md) — mesafe ve izdüşüm hesapları.
-- [11 - Varış Zamanı Kontrolcüsü](11-varis-zamani-kontrolcusu.md) — kalan mesafenin tüketicisi.
-- [10 - Varış Tespiti](10-varis-tespiti.md) — rota takibinin bittiği nokta.
+- [07 - Rüzgâr Düzeltmeli Rota Süresi](07-ruzgar-duzeltmeli-rota-suresi.md) ETA'yı gerçekte üreten model.
+- [09 - Jeodezi](09-jeodezi.md) mesafe ve izdüşüm hesapları.
+- [11 - Varış Zamanı Kontrolcüsü](11-varis-zamani-kontrolcusu.md) kalan mesafenin tüketicisi.
+- [10 - Varış Tespiti](10-varis-tespiti.md) rota takibinin bittiği nokta.
 
 ## 13. Kaynaklar
 
 - Vaka belgesi madde 4: *"Rota noktalarının kabul yarıçapları en fazla 400m
-  olarak kullanınız."* — bizim seçimimiz 120 m.
-- Kod yorumu, `mission_manager.py` — ölçülen hıza bölme kusurunun ve
+  olarak kullanınız."*, bizim seçimimiz 120 m.
+- Kod yorumu, `mission_manager.py` ölçülen hıza bölme kusurunun ve
   ±15 s → ±0.7 s düzelmesinin kaydı.
