@@ -1,0 +1,15 @@
+# ha1 dds bağlantı ayarları
+DDS_ENABLE 1
+DDS_DOMAIN_ID 1
+DDS_UDP_PORT 2019
+# sınırsız bağlantı denemesi
+DDS_MAX_RETRY 0
+
+# bekleme çemberi yarıçapı
+WP_LOITER_RAD 80
+
+# hava hızı ölçümünün ekf kullanım durumu
+ARSPD_USE 1
+
+# ekf rüzgâr değişim duyarlılığı
+EK3_WIND_P_NSE 1.0

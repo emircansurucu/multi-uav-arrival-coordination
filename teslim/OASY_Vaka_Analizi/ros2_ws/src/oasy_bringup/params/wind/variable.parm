@@ -1,0 +1,4 @@
+# değişken rüzgâr senaryosunun başlangıç değerleri
+SIM_WIND_SPD 4
+SIM_WIND_DIR 270
+SIM_WIND_TURB 1

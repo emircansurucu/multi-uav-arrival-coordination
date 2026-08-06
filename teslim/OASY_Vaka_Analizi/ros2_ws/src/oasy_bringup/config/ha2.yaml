@@ -1,0 +1,25 @@
+vehicle_id: 2  # araç kimliği
+vehicle_domain_id: 2  # araca özel dds alanı
+coordination_domain_id: 10  # ortak koordinasyon alanı
+mavlink_address: "tcp:127.0.0.1:5770"  # mavlink bağlantı adresi
+
+cruise_alt_msl_m: 400.0  # msl seyir irtifası
+takeoff_alt_msl_m: 100.0  # kalkış görevi irtifası
+wp_accept_radius_m: 120.0  # rota noktası kabul yarıçapı
+nominal_cruise_speed_mps: 22.9  # rüzgarsız seyir hızı
+min_airspeed_mps: 13.0  # en düşük komut hava hızı
+max_airspeed_mps: 28.0  # en yüksek komut hava hızı
+airspeed_rate_limit_mps2: 1.5  # hız değişim sınırı
+timing_deadband_s: 0.5  # zamanlama ölü bandı
+loiter_enabled: true  # güvenli kapıda bekleme izni
+status_publish_hz: 5.0  # durum yayın sıklığı
+peer_stale_after_s: 2.0  # eski mesaj eşiği
+peer_lost_after_s: 5.0  # kayıp araç eşiği
+
+home: {lat: 47.451146, lon: -122.317983}  # başlangıç konumu
+
+route:  # son nokta ortak hedeftir
+  - {lat: 47.475770, lon: -122.297553}
+  - {lat: 47.506088, lon: -122.247354}
+  - {lat: 47.519593, lon: -122.252929}
+  - {lat: 47.535683, lon: -122.228584}

@@ -1,0 +1,28 @@
+# OASY Python bağımlılıkları
+#
+# Bunların dışındaki her şey standart kütüphanededir ya da ROS 2 Humble
+# kurulumundan gelir (rclpy, std_msgs, geometry_msgs, geographic_msgs,
+# ardupilot_msgs). ROS paketleri pip ile kurulmaz, kurulumu README.md'de.
+#
+# Çevrimdışı kurulum:
+#   pip install --no-index --find-links=wheelhouse -r requirements.txt
+#
+# Ubuntu 22.04 + ROS 2 Humble ortamında geographiclib, PyYAML ve pytest apt
+# paketi olarak zaten kurulu; temiz bir ortamda aşağıdaki tekerler yeterli.
+
+# ArduPlane komut kanalı. AP_DDS 4.6.3 görev yükleme servisi ve airspeed
+# komutu sunmadığı için bu komutlar MAVLink üzerinden gider.
+pymavlink==2.4.49
+
+# WGS84 üzerinde jeodezik mesafe ve kerteriz. 5 m kabul yarıçapıyla çalışan
+# bir sistemde küresel yaklaşımın bırakacağı hata kabul edilemez.
+geographiclib==1.52
+
+# Araç konfigürasyonlarının okunması (oasy_bringup/config/ha*.yaml). Hedef
+# ortamda apt'tan 5.4.1 gelir; o sürümün hazır tekeri olmadığı için
+# wheelhouse'da 6.0.3 bulunur, yalnızca safe_load kullanıldığından API farkı
+# sonucu etkilemez.
+PyYAML>=5.4.1
+
+# Birim testler (161 test). Sistemi çalıştırmak için zorunlu değildir.
+pytest==6.2.5
